@@ -2234,7 +2234,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
         ENDIF
 
     CASE (NSSL_2MOMCCN)
-         CALL wrf_debug(100, 'microphysics_driver: calling nssl_2momccn')
+         CALL wrf_debug(100, 'microphysics_driver: calling nssl_2momccn mp=18')
          IF (PRESENT (QV_CURR) .AND.                           &
              PRESENT (QC_CURR) .AND. PRESENT (QNDROP_CURR)  .AND. &
              PRESENT (QR_CURR) .AND. PRESENT (QNR_CURR)  .AND. &
@@ -2255,6 +2255,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
              
 
          IF ( elec_physics == 0 ) THEN
+
+         CALL wrf_debug(100, 'microphysics_driver: calling nssl_2momccn without elec')
          
          CALL nssl_2mom_driver(                          &
                      ITIMESTEP=itimestep,                &
@@ -2318,6 +2320,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
          ELSEIF ( elec_physics > 0 .and. f_scw) THEN
 
 #if ( WRF_ELEC == 1 )
+         CALL wrf_debug(100, 'microphysics_driver: calling nssl_2momccn with elec')
          CALL nssl_2mom_driver(                          &
                      ITIMESTEP=itimestep,                &
                      TH=th,                              &
@@ -2390,6 +2393,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                   IMS=ims,IME=ime, JMS=jms,JME=jme, KMS=kms,KME=kme, &
                   ITS=its,ITE=ite, JTS=jts,JTE=jte, KTS=kts,KTE=kte  &
                                                        )
+         CALL wrf_debug(100, 'microphysics_driver: after call nssl_2momccn with elec')
 #else
         Call wrf_error_fatal( 'for elec_physics > 0, need to rebuild WRF with -DWRF_ELEC')
 #endif
@@ -3145,8 +3149,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 #include "../elec/include_microphysics_driver_elec.F"
 
 ! LIGHTNING NUDGING - 
-
-      IF (nudge_lightning.eq.1) THEN
+      IF ( present( nudge_lightning ) .and. present( gridlight ) ) THEN
+      IF ( nudge_lightning.eq.1) THEN
      
       if (maxval(gridlight(its:ite,jts:jte)).gt.0) then 
         write(0,*) 'TILE MAXVAL GRIDLIGHT',maxval(gridlight(its:ite,jts:jte))
@@ -3158,6 +3162,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                    & t8w(its:ite,kts:kte,jts:jte),p8w(its:ite,kts:kte,jts:jte),  &
                    & dz8w(its:ite,kts:kte,jts:jte),dx,dy,dt)
 
+      ENDIF
       ENDIF
 
 ! END LIGHTNING NUDGING

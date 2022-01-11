@@ -1,6 +1,6 @@
 !WRF:MODEL_LAYER:PHYSICS
 
-! prepocessed on "Jan 10 2022" at "20:35:13"
+! prepocessed on "Jan 11 2022" at "15:38:34"
 
 
 
@@ -3252,14 +3252,18 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
         
          ENDIF
 
+         IF ( present( noninduc ) ) THEN
          IF ( .not. ( noninduc(ix,kz,jy) > -1.e-3 .and. noninduc(ix,kz,jy) < 1.e-3 ) ) THEN
            write(0,*) 'problem with noninduc! ix,jy,kz,noninduc = ',ix,jy,kz,noninduc(ix,kz,jy)
            STOP
          ENDIF
+         ENDIF
 
+         IF ( present( induc ) ) THEN
          IF ( .not. ( induc(ix,kz,jy) > -1.e-3 .and. induc(ix,kz,jy) < 1.e-3 ) ) THEN
            write(0,*) 'problem with induc! ix,jy,kz,induc = ',ix,jy,kz,induc(ix,kz,jy),t5(ix,1,kz)
            STOP
+         ENDIF
          ENDIF
 
 
