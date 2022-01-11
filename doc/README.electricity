@@ -1,0 +1,173 @@
+###########
+## INTRO ##
+###########
+
+This is a first release in WRF of a basic electrification for the NSSL microphysics scheme. 
+The electrification parameterizations are based out of past work in modeling. The basics of the
+charge separation schemes comes from Mansell et al. (2005). Their use in the NSSL 2-moment microphysics
+is shown in Mansell et al. 2010 and Mansell and Ziegler (2013). First implementation into WRF is
+described by Fierro et al. (2013), which includes details of the basic discharge scheme (cylindrical
+discharge regions centered on lightning initiation points).
+
+Mansell et al. 2005: Charge structure and lightning sensitivity in a simulated 
+   multicell thunderstorm. J. Geophys. Res., 110, D12101, doi:10.1029/2004JD005287
+
+Mansell, E. R., C. L. Ziegler, and E. C. Bruning, 2010: Simulated electrification of a small 
+   thunderstorm with two-moment bulk microphysics. J. Atmos. Sci., 67, 171-194, doi:10. 1175/2009JAS2965.1.
+
+Fierro, A. O., E.R. Mansell, C. Ziegler and D. R. MacGorman 2013: The
+  implementation of an explicit charging and discharge lightning scheme
+  within the WRF-ARW model: Benchmark simulations of a continental squall line, a
+  tropical cyclone and a winter storm. Monthly Weather Review, Volume 141, 2390-2415 
+
+
+##############
+## CONTACTS ##
+##############
+
+If you have trouble with this option please contact the developers directly (i.e., not wrf_help):
+
+    Ted Mansell (Ted.Mansell  noaa.gov)
+    Alexandre Fierro (Alex.Fierro  noaa.gov) 
+
+###########
+## SETUP ##
+###########
+
+# Obtain WRF-ELEC code #
+
+Similar to WRF-CHEM, necessary files are provided externally at
+
+https://sourceforge.net/projects/wrfelec
+
+Files are available as an archive:
+
+    WRFV37_ELEC.tgz (for use with unmodified WRF-3.7.0
+    WRF_ELEC.tgz (only the 'elec' subdirectory for WRF-3.7.1 and later)
+    
+or as individual files in the "elec-3.x" directories.
+
+First expand the archive in the top level of your WRF 3.7 directory and install BoxMG (below)
+before running 'configure'.
+
+
+# BoxMG #
+
+The BoxMG elliptic equation solver is required for WRF-ELEC to calculate the 3D electric
+potential. This library is distributed at the moment as a source code archive at
+
+http://sourceforge.net/projects/boxmg4wrf/
+
+It is also available via svn at the same site. Note that the code has only been compiled for Intel/AMD
+(non-Itanium) architecture under Linux and OS X. (Not attempted on Cray or other platforms -- if you
+succeed on other platforms, please let us know at <ted.mansell@noaa.gov>)
+
+BoxMG needs to be installed before configuring WRF. Unpack the archive where you want the 
+libraries to be and then follow the instructions in the INSTALL document.
+
+
+# Configure/compile WRF #
+
+To configure WRF, two environment variables must be set: WRF_ELEC and BOXMG
+
+For tcsh:
+
+setenv WRF_ELEC 1
+setenv BOXMGLIBDIR [path to boxmg directory]
+
+For bash:
+
+export WRF_ELEC=1
+export BOXMGLIBDIR=[path to boxmg directory]
+
+For example, if the boxmg library directory is /opt/local/boxmg/lib, then (for tcsh)
+
+  setenv BOXMGLIBDIR /opt/local/boxmg
+
+Then run 'configure' in the WRF main directory and select an option for 'dmpar' (distributed
+memory parallel). The code is set up only to use the MPI parallel solver from BoxMG, so do
+not compile for serial mode. (It can still be run on a single processor, however.)
+
+
+#############
+## OPTIONS ##
+#############
+
+Specific namelist.input options are given below, along with a list of output fields.
+
+
+Electrification only works with the NSSL 2-moment options (with hail):
+
+ mp_physics(max_dom)
+                                     = 17, NSSL 2-moment 4-ice scheme (steady background CCN)
+                                     = 18, NSSL 2-moment 4-ice scheme with predicted CCN (better for idealized than real cases)
+                                       ; to set a global CCN value, use
+                                       
+Other variables in the &physics namelist:
+
+ elec_physics                        = 0, electrification (and charge arrays) turned off (DEFAULT)
+                                     = 1, electrification turned on with "1D" lightning scheme based on Ziegler and MacGorman (1994, JAS) (only works with mp_physics = 17 or 18, i.e., 2-moment NSSL schemes)
+
+ nssl_ipelec (max_dom)     ! NOTE: only set this to a nonzero value on the innermost domain
+                                     = 0, charging turned off (DEFAULT)
+                                     = 2, non-inductive charging only
+                                     = 3, non-inductive + inductive charging
+                                     = 1, not used (reserved for future use)
+
+ nssl_idischarge                     = 0, no discharge
+                                     = 1, discharge turned on (DEFAULT)
+
+ nssl_iscreen                        = 0, no screening layer (DEFAULT)
+                                     = 1, screening layer scheme of Ziegler et al. (1991, JGR)
+                                     = 2, screening layer only applied at cloud top (seems to be better for storm complexes and large storms)
+
+ nssl_ibrkd                          = breakdown electric field profile to initiate lightning
+                                     = 1, constant profile with height with value set by nssl_ecrit
+                                     = 2 to 5, variants of vertical Ecrit profile of Dwyer (2003, GRL) - '4' is recommended (DEFAULT is 4).
+
+ nssl_isaund                         = Calls the appropriate version of the UMIST (e.g., Saunders et al. 1991 scheme)
+                                     = -5 : Saunders etal 1991 (following Helsdon et al. 2001, but use normal charging instead of 'anomalous' zones)
+                                     = 0 : Saunders 1991 (modified as in Wojcik 1994)
+                                     = 2 : RR scheme ( no extra factor ) (Mansell et al. 2005, JGR)
+                                     = 4 : Saunders and Peck Scheme ( no extra factor ) (Mansell et al. 2005, JGR)
+                                     = 9 : Saunders and Peck Scheme ( no extra factor, cutoff at -32.47 as orig eq. from sp98 ) (Mansell et al. 2010, JAS)
+                                     = 10 : Brooks et al. RARcrit for T > -15 using saund2 (otherwise same as isaund=2) (set rarfac to negative in saund2)
+                                     = 11 : Brooks et al. RARcrit for T > -15 using saund6 (otherwise same as isaund=4)
+                                     = 12 : Brooks et al. RARcrit for T > -15 using saund6 (otherwise same as isaund=9) (DEFAULT)
+
+ nssl_lightrad                       = 12000, radius (m) of discharge cylinder for 1-D discharge scheme
+
+ nssl_disfrac                        = 0.3, nominal fraction of charge removed per discharge
+
+ nssl_ecrit                          = 120000, breakdown electric field (Volts/m) to initiate lightning (i.e., constant value with height). (for nssl_ibrkd=1)
+
+
+###################
+## OUTPUT FIELDS ##
+###################
+
+2D, time-dependent:
+
+  LIGHT      : Sum of lightning initations in the column
+  LIGHTDENS  : Flash extent density (sum of the number of flashes that extend into the grid column)
+  LIGHTDIS   : A kind of "source point" density that adds up the number of points in a column that have lightning
+               charge magnitude greater than 0.1*chgthr (effectively 0.01 nC/m^3 or more)
+
+3D, time-dependent:
+
+  POT         : Electric potential (Volts)
+  ELECMAG     : Electric field magnitude
+  ELECX       : x-component of E
+  ELECY       : y-component of E
+  ELECZ       : z-component of E
+  INDUC       : Inductive charge separation rate
+  NONINDUC    : Net noninductive charge separation rate
+  SCW         : Charge density carried by cloud droplets
+  SCR         : Charge density carried by rain
+  SCI         : Charge density carried by cloud ice
+  SCS         : Charge density carried by snow
+  SCH         : Charge density carried by graupel
+  SCHL        : Charge density carried by hail
+  SCTOT       : Net charge density
+  SCIONA      : Residual charge from lightning and evaporating hydrometeors that has not been reattached to another species
+

@@ -3695,6 +3695,7 @@ BENCH_START(micro_driver_tim)
       &        ,F_RAIN_PHY=grid%f_rain_phy                                &
       &        ,F_RIMEF_PHY=grid%f_rimef_phy                              &
       &        ,MP_PHYSICS=config_flags%mp_physics                        &
+      &        ,elec_PHYSICS=config_flags%elec_physics                    &
       &        ,ID=grid%id                                                &
       &        ,IDS=ids,IDE=ide, JDS=jds,JDE=jde, KDS=kds,KDE=kde         &
       &        ,IMS=ims,IME=ime, JMS=jms,JME=jme, KMS=kms,KME=kme         &
@@ -3815,6 +3816,40 @@ BENCH_START(micro_driver_tim)
       &        , cu_used=config_flags%cu_used                             &
       &        , qrcuten=grid%rqrcuten, qscuten=grid%rqscuten             &
       &        , qicuten=grid%rqicuten, qccuten=grid%rqccuten             &
+!--------------EXPLICIT LIGHTNING (Fierro et al. 2013, MWR)-----------------
+!      &        , RSCGHIS_2d=grid%rscghis_2d                               &
+!      &        , NONINDUC=grid%noninduc                                   &
+!      &        , nudge_lightning=grid%nudge_lightning                     & ! for lightning Qv nudging (Fierro et al. 2012, MWR)
+!      &        , GRIDLIGHT=grid%ltg_dat                                   & ! for lightning Qv nudging (Fierro et al. 2012, MWR)
+#ifdef WRF_ELEC
+      &        , ELECMAG=grid%elecmag                                     &
+      &        , ELECX=grid%elecx, F_ELECX=(size(grid%elecx,3) > 1)       &
+      &        , ELECY=grid%elecy                                         &
+      &        , ELECZ=grid%elecz                                         &
+      &        , INDUC=grid%induc                                         &
+      &        , POT=grid%pot                                             &
+      &        , LIGHT=grid%light                                         &
+      &        , LIGHTDENS=grid%lightdens                                 &
+      &        , LIGHTDIS=grid%lightdis                                   &
+      &        , SCR=scalar(ims,kms,jms,P_SCR), F_SCR=F_SCR               & 
+      &        , SCW=scalar(ims,kms,jms,P_SCW), F_SCW=F_SCW               & 
+      &        , SCI=scalar(ims,kms,jms,P_SCI), F_SCI=F_SCI               &  
+      &        , SCS=scalar(ims,kms,jms,P_SCS), F_SCS=F_SCS               & 
+      &        , SCH=scalar(ims,kms,jms,P_SCH), F_SCH=F_SCH               & 
+      &        , SCHL=scalar(ims,kms,jms,P_SCHL), F_SCHL=F_SCHL           & 
+      &        , SCIONA=scalar(ims,kms,jms,P_SCIONA), F_SCIONA=F_SCIONA   & 
+      &        , SCTOT=grid%sctot                                         &  
+      &        , HISTORY_INTERVAL=grid%history_interval                   &
+      &        , CURR_SECS=curr_secs                                      &
+      &        , ipelectmp=grid%nssl_ipelec                               &
+      &        , idischarge=grid%nssl_idischarge                          &
+      &        , iscreen=grid%nssl_iscreen                                &
+      &        , lightradtmp=grid%nssl_lightrad                           &
+      &        , ecrittmp=grid%nssl_ecrit                                 &
+      &        , ibrkdtmp=grid%nssl_ibrkd                                 &
+      &        , disfrac=grid%nssl_disfrac                                &
+#endif
+!--------------END EXPLICIT LIGHTNING -------------------------------------
       &        , HAIL=config_flags%gsfcgce_hail                           & ! for gsfcgce
       &        , ICE2=config_flags%gsfcgce_2ice                           & ! for gsfcgce
       &        , PHYS_TOT=grid%phys_tot                                   & ! for gsfcgce

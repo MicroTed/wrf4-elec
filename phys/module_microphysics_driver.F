@@ -7,10 +7,11 @@ CONTAINS
 SUBROUTINE microphysics_driver(                                          &
                        th, rho, pi_phy, p                                &
                       ,ht, dz8w, p8w, dt,dx,dy                           &
-                      ,mp_physics, spec_zone                             &
+                      ,mp_physics, elec_physics, spec_zone               &
                       ,specified, channel_switch                         &
                       ,warm_rain                                         &
                       ,t8w                                               &
+                      ,history_interval,curr_secs                        &
                       ,chem_opt, progn                                   &
                       ,cldfra, cldfra_old, exch_h, nsource               &
                       ,qlsink, precr, preci, precs, precg                &
@@ -77,6 +78,13 @@ SUBROUTINE microphysics_driver(                                          &
                       ,f_qi3,f_qni3,f_qvoli3,f_qaoli3                    & ! for Jensen ISHMAEL
                       ,f_effr,f_ice_effr,f_tot_effr                      &
                       ,f_qic_effr,f_qip_effr,f_qid_effr                  &                 
+                      ,scr,scw,sci,scs,sch,schl,sciona,sctot             &
+                      ,f_scr,f_scw,f_sci,f_scs,f_sch,f_schl,f_sciona     &
+                      ,ipelectmp                                         & ! Explicit lightning namelist flags
+#ifdef WRF_ELEC 
+                      ,iscreen,lightradtmp,ibrkdtmp,ecrittmp,disfrac,idischarge   & ! Explicit lightning namelist flags
+#endif
+                      ,nudge_lightning                                   & ! lightnign Qv nudging flag
                       ,cu_used                                           &
                       ,qrcuten, qscuten, qicuten, qccuten                &
                       ,qt_curr,f_qt                                      &
@@ -97,6 +105,13 @@ SUBROUTINE microphysics_driver(                                          &
 !NUWRF JJS 20110525 ^^^^^
 !                     ,ccntype                                           & ! for mp_milbrandt2mom
                       ,u,v,w,z                                          &   
+#ifdef WRF_ELEC 
+                      ,induc,pot,elecmag                                 &
+                      ,elecx,f_elecx,elecy,elecz                         &
+                      ,light,lightdens,lightdis                          &
+#endif
+                      ,gridlight                                         &
+                      ,noninduc,  rscghis_2d                             &
                       ,rainnc,    rainncv                                &
                       ,snownc,    snowncv                                &
                       ,hailnc,    hailncv                                &
@@ -193,6 +208,15 @@ SUBROUTINE microphysics_driver(                                          &
   USE module_dm, ONLY : &
                  local_communicator, mytask,  wrf_dm_min_real, wrf_dm_max_real
 #endif
+
+#ifdef WRF_ELEC 
+! BOXMG Solver
+  USE module_mp_boxmgsetup
+  USE module_mp_discharge
+  USE module_mp_screen
+  USE module_mp_nudge_light
+#endif
+
 
 ! Model Layer
    USE module_model_constants
@@ -406,11 +430,40 @@ SUBROUTINE microphysics_driver(                                          &
 !-- diagflag      Logical to tell us when to produce diagnostics for history or restart
 !
 !======================================================================
+!======================================================================
+! Explicit Lightning (Mansell et al. 2005, Fierro et al. 2013, MWR):
+!
+!--induc        total inductive/polarization charging rates in C/m3*s (Ziegler et al. 1991,MWR)
+!--noninduc     total non inductive charging rates in C/m3*s
+!--rscghis_2d   maximum non inductive charging rate in the column in C/m3*s.
+!--elec         electric field vector (V/m)
+!--elecmag      electric field magnitude (V/m)
+!--elecx        X-component of the ambient electric field (V/m).
+!--elecy        Y-component of the ambient electric field (V/m).
+!--elecz        vertical, Z-component of the ambient electric field (V/m).
+!--pot          electric potential (V)
+!--sctot        total net space charge in C/kg
+!--scx           total net space charge on hydrometeor species x
+!--light         2D flash origin densities per output time
+!--lightdens     2D flash extent densities per output time
+!--lightdis      2D total number of discharge points per output time 
+!
+! Lightning assimilation/nudging (Fierro et al. 2012, MWR):
+!
+!  activate by setting the flag LIGHT_ASSIM_FLAG to .true. - 
+!  nudging is called by the subroutine "nudge_light" in module_mp_nudge_light.F (which
+!  contains nudging parameters)
+!  set model time intervals for nudging in solve.em.F
+!--gridlight     gridded lightning data for nudging   
+!
+!======================================================================
   INTEGER,parameter :: iunit=6
   INTEGER :: mpi_error_code=1
 
+   INTEGER,    INTENT(IN   )    :: history_interval
+   REAL   ,    INTENT(IN   )    :: curr_secs 
    TYPE(grid_config_rec_type),  INTENT(IN   ) , OPTIONAL   :: config_flags
-   INTEGER,    INTENT(IN   )    :: mp_physics
+   INTEGER,    INTENT(IN   )    :: mp_physics,elec_physics
    LOGICAL,    INTENT(IN   )    :: specified
    INTEGER, OPTIONAL, INTENT(IN   )    :: chem_opt, progn
    INTEGER, OPTIONAL, INTENT(IN   )    :: hail, ice2 !, ccntype
@@ -600,6 +653,23 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                                                                          vmi3d_3,di3d_3,rhopo3d_3,  & ! for Jensen ISHMAEL
                                                                          phii3d_3,       & ! for Jensen ISHMAEL
                                                                          itype,itype_2,itype_3             ! for Jensen ISHMAEL
+! Explicit lightning
+#ifdef WRF_ELEC 
+   REAL, OPTIONAL, DIMENSION( ims:ime , kms:kme, jms:jme ) , INTENT(INOUT) :: pot
+   REAL, OPTIONAL, DIMENSION( ims:ime , kms:kme, jms:jme ) , INTENT(INOUT)   :: elecmag,induc,elecx,elecy,elecz
+   REAL, OPTIONAL, DIMENSION( ims:ime , jms:jme )          , INTENT(INOUT)   :: light,lightdens
+   INTEGER, OPTIONAL, DIMENSION( ims:ime , jms:jme )       , INTENT(INOUT)   :: lightdis
+   REAL, OPTIONAL, DIMENSION( ims:ime , jms:jme )          , INTENT(INOUT) ::  rscghis_2d
+   REAL, OPTIONAL, DIMENSION( ims:ime , kms:kme, jms:jme ) , INTENT(INOUT)   :: noninduc
+
+! local arrays -- could be made allocatable/save?
+   REAL, DIMENSION( ims:ime , kms:kme, jms:jme,1:2) :: scion ! local array for the driver- 1=-, 2=+
+   REAL, DIMENSION( ims:ime , kms:kme, jms:jme,1:4) :: elec ! local array for the driver-only emag is used for I/O-ALWAYS USED IN 1D so NOT OPTIONAL !.
+! End Explicit lightning
+#endif
+!   lightning nudging/assimilation
+   REAL, OPTIONAL, DIMENSION( ims:ime, jms:jme ) ::      gridlight
+
    LOGICAL,  OPTIONAL,   INTENT(IN   )    :: channel_switch
    REAL, OPTIONAL,  INTENT(INOUT   ) :: naer  ! aerosol number concentration (/kg)
    REAL, DIMENSION( ims:ime, jms:jme ), INTENT(INOUT) , OPTIONAL :: qnwfa2d, qnifa2d
@@ -627,7 +697,10 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                  ,kext_ft_qic,kext_ft_qip,kext_ft_qid &
                  ,kext_ft_qs,kext_ft_qg                           &
                  ,qnwfa_curr,qnifa_curr                           & ! Added by G. Thompson
-                 ,qvolg_curr,qvolh_curr, qrimef_curr
+                 ,qvolg_curr,qvolh_curr, qrimef_curr              &
+                 ,scw,scr,sci,scs,sch,schl,sctot,sciona             ! Explicit Lightning
+
+
 
    REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                  &
          OPTIONAL,                                                &
@@ -695,6 +768,11 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                        ,f_qic_effr,f_qip_effr,f_qid_effr &
                       ,f_qic,f_qip,f_qid &
                       ,f_qnic,f_qnip,f_qnid                                  &
+#ifdef WRF_ELEC
+! Explicit lightning
+                       ,f_elecx                                 & !lightning
+                       ,f_scw,f_scr,f_sci,f_scs,f_sch,f_schl,f_sciona & ! lightning
+#endif
                        ,f_qzi,f_qzs,f_qzg,f_qzh,f_qvolg,f_qvolh              &
                        ,f_qrimef                                             &
                        ,f_qir,f_qib                                          & ! for P3
@@ -703,6 +781,13 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                        ,f_qvoli2,f_qaoli2                                    & ! for Jensen ISHMAEL
                        ,f_qi3,f_qni3,f_qvoli3,f_qaoli3                       & ! for Jensen ISHMAEL
                        ,f_qnwfa, f_qnifa                         ! Added by G. Thompson
+
+#ifdef WRF_ELEC
+   real,    OPTIONAL :: lightradtmp,ecrittmp,disfrac
+   integer, OPTIONAL :: iscreen,idischarge,ibrkdtmp
+#endif
+   integer,optional :: ipelectmp,nudge_lightning
+! End explicit lightning
 
 
    LOGICAL, OPTIONAL, INTENT(IN) :: diagflag
@@ -763,6 +848,29 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    INTEGER  :: end_hour,a,b,xt24,irr_day,timing
    REAL :: constants_irrigation,tloc,irr_start,phase
    INTEGER, OPTIONAL, DIMENSION( ims:ime , jms:jme ), INTENT(INOUT) :: irr_rand_field
+
+    
+#ifdef WRF_ELEC
+! Explicit lightning
+   integer l,iter,lgtstp,loccur,nxdg,nydg,nzdg
+   logical :: irelax = .false.
+   integer :: maxiter = 60
+   integer, save :: iboxmgsetup = 0, isetup = 1
+   REAL, DIMENSION(ims:ime, kms:kme, jms:jme ) ::  ezfair,height2
+   REAL, DIMENSION(kms:kme) ::  potfair
+   double precision :: etot
+   double precision :: dt1,dt4,timeboxmg
+   real, parameter :: jc = -2.0e-12  ! fair weather current density J (Amp m**-2) (Helsdon & Farley 1987; Chiu (1978) has -2.7e-12, quoting Gish (1944))
+   real, parameter :: eperao = 8.8592e-12 ! permittivity of air
+!   fair weather elec field params
+
+   double precision, parameter :: ezfairo = -80.00d0
+   double precision, parameter :: efa1 = 4.5d-3, efa2 = 3.8d-4, efa3 = 1.0d-4
+   double precision, parameter :: efb1 = 0.50, efb2 = 0.65, efb3 = 0.10
+   integer :: ng =3
+! End explicit lightning
+#endif
+
 
 !---------------------------------------------------------------------
 !  check for microphysics type.  We need a clean way to
@@ -1900,6 +2008,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
              PRESENT (QVOLG_CURR) .AND. F_QVOLG  .AND.         &
              PRESENT (QVOLH_CURR) .AND. F_QVOLH ) THEN
              
+         IF ( elec_physics == 0 ) THEN
 
          CALL nssl_2mom_driver(                          &
                      ITIMESTEP=itimestep,                &
@@ -1942,7 +2051,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 #endif
                      nssl_progn=nssl_progn,              &
                      diagflag = diagflag,                &
-                     ke_diag = ke_diag,                &
+                     ke_diag = ke_diag,                  &
                      cu_used=cu_used,                    &
                      qrcuten=qrcuten,                    &  ! hm
                      qscuten=qscuten,                    &  ! hm
@@ -1958,6 +2067,90 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                   IMS=ims,IME=ime, JMS=jms,JME=jme, KMS=kms,KME=kme, &
                   ITS=its,ITE=ite, JTS=jts,JTE=jte, KTS=kts,KTE=kte  &
                                                                     )
+
+
+        ELSEIF ( elec_physics > 0 .and. f_scw ) THEN
+
+#if ( WRF_ELEC >= 1 )
+         CALL nssl_2mom_driver(                          &
+                     ITIMESTEP=itimestep,                &
+                     TH=th,                              &
+                     QV=qv_curr,                         &
+                     QC=qc_curr,                         &
+                     QR=qr_curr,                         &
+                     QI=qi_curr,                         &
+                     QS=qs_curr,                         &
+                     QH=qg_curr,                         &
+                     QHL=qh_curr,                        &
+!                     cn=qnn_curr,                        &
+                     CCW=qndrop_curr,                       &
+                     CRW=qnr_curr,                       &
+                     CCI=qni_curr,                       &
+                     CSW=qns_curr,                       &
+                     CHW=qng_curr,                       &
+                     CHL=qnh_curr,                       &
+                     SCR=scr,                            &
+                     SCW=scw,                            &
+                     SCI=sci,                            &
+                     SCS=scs,                            &
+                     SCH=sch,                            &
+                     SCHL=schl,                          &
+                     SCTOT=sctot,                        &
+                     NONINDUC = noninduc,                &
+                     rscghis_2d = rscghis_2d,            &
+                     INDUC = induc,                      & 
+                     ELEC = elecz,                       & 
+                     SCION = scion,                      & 
+                     SCIONA = sciona,                    & 
+                     VHW=qvolg_curr,                     &
+                     VHL=qvolh_curr,                     &
+                     PII=pi_phy,                         &
+                     P=p,                                &
+                     W=w,                                &
+                     DZ=dz8w,                            &
+                     dx=dx, dy=dy,                       &
+                     DTP=dt,                             &
+                     DN=rho,                             &
+                     RAINNC   = RAINNC,                  &
+                     RAINNCV  = RAINNCV,                 &
+                     SNOWNC   = SNOWNC,                  &
+                     SNOWNCV  = SNOWNCV,                 &
+                     HAILNC   = HAILNC,                  &
+                     HAILNCV  = HAILNCV,                 &
+                     GRPLNC   = GRAUPELNC,               &
+                     GRPLNCV  = GRAUPELNCV,              &
+                     SR=SR,                              &
+                     diagflag = diagflag,                &
+                     ke_diag = ke_diag,                  &
+                     ipelectmp = ipelectmp,              &
+                     dbz      = refl_10cm,               &
+                     nssl_progn=nssl_progn,              &
+                     cu_used=cu_used,                    &
+                     qrcuten=qrcuten,                    &  ! hm
+                     qscuten=qscuten,                    &  ! hm
+                     qicuten=qicuten,                    &  ! hm
+                     qccuten=qccuten,                    &  ! hm
+                     re_cloud=re_cloud,                  &
+                     re_ice=re_ice,                      &
+                     re_snow=re_snow,                    &
+                     has_reqc=has_reqc,                  & ! ala G. Thompson
+                     has_reqi=has_reqi,                  & ! ala G. Thompson
+                     has_reqs=has_reqs,                  & ! ala G. Thompson
+#if ( WRF_CHEM == 1 )
+                     EVAPPROD=evapprod,RAINPROD=rainprod,&
+                     WETSCAV_ON = config_flags%wetscav_onoff == 1, &
+#endif
+                  IDS=ids,IDE=ide, JDS=jds,JDE=jde, KDS=kds,KDE=kde, &
+                  IMS=ims,IME=ime, JMS=jms,JME=jme, KMS=kms,KME=kme, &
+                  ITS=its,ITE=ite, JTS=jts,JTE=jte, KTS=kts,KTE=kte  &
+                                                       )
+
+#else
+        Call wrf_error_fatal( 'for elec_physics > 0, need to rebuild WRF with -DWRF_ELEC')
+#endif
+
+
+        ENDIF ! elec_physics
 
         ELSE
            Call wrf_error_fatal( 'arguments not present for calling nssl_2mom')
@@ -2018,7 +2211,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                     EVAPPROD=evapprod,RAINPROD=rainprod, &
 #endif
                      nssl_progn=nssl_progn,              &
-                      diagflag = diagflag,               &
+                     diagflag = diagflag,                &
+                     ke_diag = ke_diag,                  &
                      cu_used=cu_used,                    &
                      qrcuten=qrcuten,                    &  ! hm
                      qscuten=qscuten,                    &  ! hm
@@ -2060,6 +2254,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
              PRESENT( QNN_CURR )                          ) THEN
              
 
+         IF ( elec_physics == 0 ) THEN
+         
          CALL nssl_2mom_driver(                          &
                      ITIMESTEP=itimestep,                &
                      TH=th,                              &
@@ -2118,6 +2314,89 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                   IMS=ims,IME=ime, JMS=jms,JME=jme, KMS=kms,KME=kme, &
                   ITS=its,ITE=ite, JTS=jts,JTE=jte, KTS=kts,KTE=kte  &
                                                                     )
+
+         ELSEIF ( elec_physics > 0 .and. f_scw) THEN
+
+#if ( WRF_ELEC == 1 )
+         CALL nssl_2mom_driver(                          &
+                     ITIMESTEP=itimestep,                &
+                     TH=th,                              &
+                     QV=qv_curr,                         &
+                     QC=qc_curr,                         &
+                     QR=qr_curr,                         &
+                     QI=qi_curr,                         &
+                     QS=qs_curr,                         &
+                     QH=qg_curr,                         &
+                     QHL=qh_curr,                        &
+                     cn=qnn_curr,                        &
+                     CCW=qndrop_curr,                       &
+                     CRW=qnr_curr,                       &
+                     CCI=qni_curr,                       &
+                     CSW=qns_curr,                       &
+                     CHW=qng_curr,                       &
+                     CHL=qnh_curr,                       &
+                     SCR=scr,                            &
+                     SCW=scw,                            &
+                     SCI=sci,                            &
+                     SCS=scs,                            &
+                     SCH=sch,                            &
+                     SCHL=schl,                          &
+                     SCTOT=sctot,                        &
+                     NONINDUC = noninduc,                &
+                     rscghis_2d = rscghis_2d,            &
+                     INDUC = induc,                      & 
+                     ELEC = elecz,                       & 
+                     SCION = scion,                      & 
+                     SCIONA = sciona,                    & 
+                     VHW=qvolg_curr,                     &
+                     VHL=qvolh_curr,                     &
+                     PII=pi_phy,                         &
+                     P=p,                                &
+                     W=w,                                &
+                     DZ=dz8w,                            &
+                     dx=dx, dy=dy,                       &
+                     DTP=dt,                             &
+                     DN=rho,                             &
+                     RAINNC   = RAINNC,                  &
+                     RAINNCV  = RAINNCV,                 &
+                     SNOWNC   = SNOWNC,                  &
+                     SNOWNCV  = SNOWNCV,                 &
+                     HAILNC   = HAILNC,                  &
+                     HAILNCV  = HAILNCV,                 &
+                     GRPLNC   = GRAUPELNC,               &
+                     GRPLNCV  = GRAUPELNCV,              &
+                     SR=SR,                              &
+                     diagflag = diagflag,                &
+                     ke_diag = ke_diag,                  &
+                     ipelectmp = ipelectmp,                &
+                     dbz      = refl_10cm,               &
+                     nssl_progn=nssl_progn,              &
+                     cu_used=cu_used,                    &
+                     qrcuten=qrcuten,                    &  ! hm
+                     qscuten=qscuten,                    &  ! hm
+                     qicuten=qicuten,                    &  ! hm
+                     qccuten=qccuten,                    &  ! hm
+                     re_cloud=re_cloud,                  &
+                     re_ice=re_ice,                      &
+                     re_snow=re_snow,                    &
+                     has_reqc=has_reqc,                  & ! ala G. Thompson
+                     has_reqi=has_reqi,                  & ! ala G. Thompson
+                     has_reqs=has_reqs,                  & ! ala G. Thompson
+#if ( WRF_CHEM == 1 )
+                     EVAPPROD=evapprod,RAINPROD=rainprod,&
+                     WETSCAV_ON = config_flags%wetscav_onoff == 1, &
+#endif
+                  IDS=ids,IDE=ide, JDS=jds,JDE=jde, KDS=kds,KDE=kde, &
+                  IMS=ims,IME=ime, JMS=jms,JME=jme, KMS=kms,KME=kme, &
+                  ITS=its,ITE=ite, JTS=jts,JTE=jte, KTS=kts,KTE=kte  &
+                                                       )
+#else
+        Call wrf_error_fatal( 'for elec_physics > 0, need to rebuild WRF with -DWRF_ELEC')
+#endif
+         
+         ENDIF
+        
+
         ELSE
            Call wrf_error_fatal( 'arguments not present for calling nssl_2momccn')
         ENDIF
@@ -2860,6 +3139,29 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
          CALL wrf_error_fatal ( wrf_err_message )
 
       END SELECT micro_select
+
+      
+#if ( WRF_ELEC == 1 )
+#include "../elec/include_microphysics_driver_elec.F"
+
+! LIGHTNING NUDGING - 
+
+      IF (nudge_lightning.eq.1) THEN
+     
+      if (maxval(gridlight(its:ite,jts:jte)).gt.0) then 
+        write(0,*) 'TILE MAXVAL GRIDLIGHT',maxval(gridlight(its:ite,jts:jte))
+      endif
+
+
+     CALL nudge_light(ite-its+1,jte-jts+1,kte-kts+1,qg_curr(its:ite,kts:kte,jts:jte),   &
+                   & qv_curr(its:ite,kts:kte,jts:jte),gridlight(its:ite,jts:jte),  &
+                   & t8w(its:ite,kts:kte,jts:jte),p8w(its:ite,kts:kte,jts:jte),  &
+                   & dz8w(its:ite,kts:kte,jts:jte),dx,dy,dt)
+
+      ENDIF
+
+! END LIGHTNING NUDGING
+#endif
 
    ENDDO
    !$OMP END PARALLEL DO

@@ -1,0 +1,12 @@
+# DEPENDENCIES for elec
+
+module_mp_boxmgsetup.o : ../frame/module_wrf_error.o 
+
+module_commasmpi.o : ../frame/module_wrf_error.o
+
+module_mp_discharge.o : module_commasmpi.o ../frame/module_dm.o ../frame/module_wrf_error.o 
+
+module_mp_screen.o : ../frame/module_dm.o module_commasmpi.o ../frame/module_wrf_error.o
+
+module_mp_nudge_light.o : ../frame/module_dm.o ../frame/module_wrf_error.o
+

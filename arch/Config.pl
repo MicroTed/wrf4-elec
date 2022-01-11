@@ -9,6 +9,7 @@ select((select(STDOUT), $|=1)[0]);
 $sw_perl_path = perl ;
 $sw_netcdf_path = "" ;
 $sw_pnetcdf_path = "" ;
+$sw_boxmg_path = "" ;
 $sw_hdf5_path=""; 
 $sw_phdf5_path=""; 
 $sw_jasperlib_path=""; 
@@ -29,6 +30,7 @@ $sw_4dvar_flag = "" ;
 $sw_wrfplus_path = "" ;
 $sw_wavelet_flag = "" ;
 $WRFCHEM = 0 ;
+$WRFELEC = 0 ;
 $sw_os = "ARCH" ;           # ARCH will match any
 $sw_mach = "ARCH" ;         # ARCH will match any
 $sw_wrf_core = "" ;
@@ -94,6 +96,12 @@ while ( substr( $ARGV[0], 0, 1 ) eq "-" )
   if ( substr( $ARGV[0], 1, 8 ) eq "pnetcdf=" )
   {
     $sw_pnetcdf_path = substr( $ARGV[0], 9 ) ;
+  }
+  if ( substr( $ARGV[0], 1, 6 ) eq "boxmg=" )
+  {
+    printf "set sw_boxmg_path\n";
+    $sw_boxmg_path = substr( $ARGV[0], 7 ) ;
+  #  printf "sw_boxmg_path=$sw_boxmg_path \n";
   }
   if ( substr( $ARGV[0], 1, 5 ) eq "hdf5=" )
   {
@@ -179,6 +187,25 @@ while ( substr( $ARGV[0], 0, 1 ) eq "-" )
       $sw_nmm_core = "-DNMM_CORE=1" ;
     }
   }
+
+  if ( substr( $ARGV[0], 1, 13 ) eq "compileflags=" )
+  {
+    $sw_compileflags = substr( $ARGV[0], 14 ) ;
+    $sw_compileflags =~ s/!/ /g ;
+#   look for each known option
+    $where_index = index ( $sw_compileflags , "-DWRF_ELEC" ) ;
+    if ( $where_index eq -1 ) 
+    {
+      $WRFELEC = 0 ;
+      printf "WRF_ELEC not found in $sw_compileflags\n " ;
+    }
+    else
+    {
+      $WRFELEC = 1 ;
+      printf "WRF_ELEC was found in $sw_compileflags\n";
+    } 
+  }
+
   if ( substr( $ARGV[0], 1, 13 ) eq "compileflags=" )
   {
     $sw_compileflags = substr( $ARGV[0], 14 ) ;
@@ -342,6 +369,8 @@ $validresponse = 0 ;
 
 if ( ($sw_wrf_core eq "WRF_PLUS_CORE") || ($sw_wrf_core eq "4D_DA_CORE") ) 
    { @platforms = qw ( serial dmpar ) ; }
+   elsif ( $WRFELEC == 1 )
+   { @platforms = qw ( dmpar ) ; }
    else
    { @platforms = qw ( serial smpar dmpar dm+sm ) ; }
 
@@ -459,6 +488,7 @@ while ( <CONFIGURE_DEFAULTS> )
     $_ =~ s/CONFIGURE_PERL_PATH/$sw_perl_path/g ;
     $_ =~ s/CONFIGURE_NETCDF_PATH/$sw_netcdf_path/g ;
     $_ =~ s/CONFIGURE_PNETCDF_PATH/$sw_pnetcdf_path/g ;
+    $_ =~ s/CONFIGURE_BOXMG_PATH/$sw_boxmg_path/g ;
     $_ =~ s/CONFIGURE_HDF5_PATH/$sw_hdf5_path/g ;
     $_ =~ s/CONFIGURE_PHDF5_PATH/$sw_phdf5_path/g ;
     $_ =~ s/CONFIGURE_LDFLAGS/$sw_ldflags/g ;
@@ -547,6 +577,21 @@ while ( <CONFIGURE_DEFAULTS> )
       { $_ =~ s/CONFIGURE_WRFIO_PHDF5//g ;
 	$_ =~ s:CONFIGURE_PHDF5_FLAG::g ;
 	$_ =~ s:CONFIGURE_PHDF5_LIB_PATH::g ;
+	 }
+
+  #   printf "check setting CONFIGURE_BOXMG_LIB_PATH sw_boxmg_path=$sw_boxmg_path\n";
+
+    if ( $sw_boxmg_path ) 
+    
+      {    #   printf "set CONFIGURE_BOXMG_LIB_PATH sw_boxmg_path=$sw_boxmg_path\n";
+#         printf "set boxmg in $_ \n";
+        $_ =~ s:CONFIGURE_BOXMG_LIB_PATH:-L$ENV{BOXMGLIBDIR}/lib -lboxmg_opt_sgl -lboxmg-extras_opt_sgl: ;
+        $_ =~ s:BOXMGINCPATH:-I$ENV{BOXMGLIBDIR}/include -I$ENV{BOXMGLIBDIR}/extras/msg/include: ;
+	 }
+    else                   
+      {  #  printf "not setting CONFIGURE_BOXMG_LIB_PATH sw_boxmg_path=$sw_boxmg_path\n";
+          $_ =~ s:CONFIGURE_BOXMG_LIB_PATH::g ;
+          $_ =~ s:BOXMGINCPATH::g ;
 	 }
 
     if ( $sw_jasperlib_path && $sw_jasperinc_path ) 
@@ -640,7 +685,7 @@ while ( <CONFIGURE_DEFAULTS> )
     if ( ! (substr( $_, 0, 5 ) eq "#ARCH") ) { @machopts = ( @machopts, $_ ) ; }
     if ( substr( $_, 0, 10 ) eq "ENVCOMPDEF" )
     {
-      @machopts = ( @machopts, "WRF_CHEM\t=\t$WRFCHEM \n" ) ;
+      @machopts = ( @machopts, "WRF_CHEM\t=\t$WRFCHEM\nWRF_ELEC\t=\t$WRFELEC \n" ) ;
     }
   }
 
@@ -675,6 +720,7 @@ while ( <CONFIGURE_DEFAULTS> )
         $validresponse = 0 ;
         #only allow parallel netcdf if the user has chosen parallel option
         if ( $paropt ne 'dmpar' && $paropt ne 'dm+sm' ) { $sw_pnetcdf_path = "" ; }
+        if ( $paropt ne 'dmpar' && $paropt ne 'dm+sm' ) { $sw_boxmg_path = "" ; }
         #
         until ( $validresponse ) {
           if ( $ENV{WRF_DA_CORE} eq "1" || $sw_da_core eq "-DDA_CORE=1" ) {
@@ -868,6 +914,19 @@ while ( <ARCH_PREAMBLE> )
 	$_ =~ s:CONFIGURE_PNETCDF_FLAG::g ;
 	$_ =~ s:CONFIGURE_PNETCDF_LIB_PATH::g ;
 	 }
+
+    if ( $sw_boxmg_path ) 
+      {    #   printf "set CONFIGURE_BOXMG_LIB_PATH sw_boxmg_path=$sw_boxmg_path\n";
+#         printf "set boxmg in $_ \n";
+        $_ =~ s:CONFIGURE_BOXMG_LIB_PATH:-L$ENV{BOXMGLIBDIR}/lib -lboxmg_opt_sgl -lboxmg-extras_opt_sgl: ;
+        $_ =~ s:BOXMGINCPATH:-I$ENV{BOXMGLIBDIR}/include -I$ENV{BOXMGLIBDIR}/extras/msg/include: ;
+	 }
+    else                   
+      {  #  printf "not setting CONFIGURE_BOXMG_LIB_PATH sw_boxmg_path=$sw_boxmg_path\n";
+          $_ =~ s:CONFIGURE_BOXMG_LIB_PATH::g ;
+          $_ =~ s:BOXMGINCPATH::g ;
+	 }
+
 
     if ( $sw_hdf5_path )
       { $_ =~ s:CONFIGURE_HDF5_LIB_PATH:-L$sw_hdf5_path/lib -lhdf5hl_fortran -lhdf5_hl -lhdf5_fortran -lhdf5 -lm -lz: ;

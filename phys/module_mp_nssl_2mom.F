@@ -1,8 +1,6 @@
 !WRF:MODEL_LAYER:PHYSICS
 
-
-! prepocessed on "Sep  7 2021" at "19:37:43"
-
+! prepocessed on "Jan 10 2022" at "20:35:13"
 
 
 
@@ -77,7 +75,7 @@
 !---------------------------------------------------------------------
 ! Sept. 2021:
 ! Fixes:
-!   Restored previous formulation of snow reflectivity, as it was realized that the last change incorrectly assumed a fixed density independent of size. Generally lower snow reflectivity values as a result (no effect on microphysics)
+!   Restored previous formulation of snow reflectivity, as it was realized that the last change incorrectly assumed a fixed density independent of size. Generally lower reflectivity values as a result (no effect on microphysics)
 ! Other:
 !   Generic fall speed coeffecients (axx,bxx) to accomodate future frozen drops category (no effect)
 !   Reordered collection coefficients (dab1lh) to be consistent (no effect)
@@ -169,7 +167,6 @@
 
 
 MODULE module_mp_nssl_2mom
-
   IMPLICIT NONE
   
   public nssl_2mom_driver
@@ -213,7 +210,6 @@ MODULE module_mp_nssl_2mom
                                  ! =2 turn on for graupel density less than 300. only 
   integer  :: iusewethail = 0 ! =1 to turn on use of QHW for graupel reflectivity (only for ZVDM -- mixedphase)
   integer  :: iusewetsnow = 1 ! =1 to turn on diagnosed bright band; =2 'old' snow reflectivity (dry), =3 'old' snow dbz + brightband
-
 ! microphysics
 
   real, private :: rho_qr = 1000., cnor = 8.0e5  ! cnor is set in namelist!!  rain params
@@ -234,6 +230,7 @@ MODULE module_mp_nssl_2mom
   real   , private :: cwdisp         = 0.15      ! assume droplet dispersion parameter (can be 0.3 for maritime)
   real   , private  :: ccn            = 0.6e+09   ! set in namelist!! Central plains CCN value
   real   , public  :: qccn             ! ccn "mixing ratio"
+  real   , private :: old_qccn = -1.0
   integer, private :: iauttim        = 1         ! 10-ice rain delay flag
   real   , private :: auttim         = 300.      ! 10-ice rain delay time
   real   , private :: qcwmntim       = 1.0e-5    ! 10-ice rain delay min qc for time accrual
@@ -244,6 +241,8 @@ MODULE module_mp_nssl_2mom
 #else
       logical, parameter :: invertccn = .false. ! =true for base state of ccn=0, =false for ccn initialized in the base state
 #endif
+  logical :: switchccn = .false.
+  real    :: old_cccn = -1.0
   logical :: restoreccn = .true. ! whether or not to nudge CCN back to base state (qccn) (only applies if CCNA is NOT predicted)
   real    :: ccntimeconst = 3600.  ! time constant for CCN restore (either for CCNA or when restoreccn = true)
 
@@ -602,6 +601,7 @@ MODULE module_mp_nssl_2mom
                             ! 3 = only add 1.5*cxmin to number concentration (allow max size to apply)
                             ! 4 = add droplets with minimum radius of 20 microns
   real    :: maxsupersat = 1.9 ! maximum supersaturation ratio, above which a saturation adustment is done
+  real    :: maxlowtempss = 1.08 ! Sat. ratio threshold for allowing droplet nucleation at T < tfrh
   real    :: ssmxuf = 4.0 ! supersaturation at which to start using "ultrafine" CCN (if ccnuf > 0.)
   
 
@@ -745,6 +745,35 @@ MODULE module_mp_nssl_2mom
   integer :: ichge = 3
   integer :: ichgw = 2
   real    :: charging_border = 4000. ! width of no-charging zone from boundary
+  integer :: nic_noliq = 0  ! switch for NIC without riming (MST, 2006)
+  real    :: qc_noliq = 0.1 ! charge per collision (in fC) for non-riming NIC.
+  logical :: largeion = .false.   ! true: use large ion category 
+  integer :: nonigrd = 0
+  integer :: ftauopt = 1
+  real    :: rgard1  = 1.0
+  real    :: rarfac  = 1.0
+  real    :: trever = -15.0
+  integer :: isctemopt = 1  ! option for roll-off factor: 1=old quadratic; 2 = cosine
+  real    :: nic_min_temp = -33. ! Low temperature cut-off for cosine roll-off
+  real    :: cidiamin = 0.0  ! minimum crystal size for charging
+  
+  real    :: erbnd  = 0.01
+  real    :: fdgt   = 1.0
+  real    :: costhe = 0.35
+  real    :: delqnsa = -50.0e-14
+  real    :: delqxsa =  50.0e-14
+  real    :: delqnsb = -2.0e-14
+  real    :: delqxsb =  2.0e-14
+  real    :: delqnia = -50.0e-14
+  real    :: delqxia =  50.0e-14
+  real    :: scxacymax = 3000.e-12 ! Maximum charging rate magnitude (C s-1 m-3)
+
+!
+! Takahashi lookup table
+!
+      integer, parameter :: nlwc=30, ntem=31
+      real takalu(0:ntem,0:nlwc) 
+
       real, private    :: delqnw = -1.0e-10!-1.0e-12 !
       real, private    :: delqxw =  1.0e-10! 1.0e-12 !
       real :: tindmn = 233, tindmx = 298.0  ! min and max temperatures where inductive charging is allowed
@@ -810,7 +839,6 @@ MODULE module_mp_nssl_2mom
 !
 !  constants
 !
-      real, parameter :: cp608 = 0.608          ! constant used in conversion of T to Tv
       real, parameter :: ar = 841.99666         ! rain terminal velocity power law coefficient (LFO)
       real, parameter :: br = 0.8               ! rain terminal velocity power law coefficient (LFO)
       real, parameter :: aradcw = -0.27544      !
@@ -827,11 +855,13 @@ MODULE module_mp_nssl_2mom
 !  new values for  cs and ds
       real, parameter :: cs = 12.42             ! snow terminal velocity power law coefficient 
       real, parameter :: ds = 0.42              ! snow terminal velocity power law coefficient 
+      real, parameter :: cp608 = 0.608          ! constant used in conversion of T to Tv
+
+      real, parameter :: gr = 9.8
+
       real, parameter :: pi = 3.141592653589793
       real, parameter :: piinv = 1./pi
       real, parameter :: pid4 = pi/4.0
-
-      real, parameter :: gr = 9.8
 
 !
 ! max and min mean volumes
@@ -895,25 +925,28 @@ MODULE module_mp_nssl_2mom
       real, parameter :: cbwbolton = 29.65 ! constants for Bolton formulation
       real, parameter :: cawbolton = 17.67
 
-      real, parameter :: tfr = 273.15, tfrh = 233.15
+      real, parameter :: tfrh = 233.15
+      real, parameter :: tfr = 273.15
 
       real, parameter :: cp = 1004.0, rd = 287.04
-      real, parameter :: cpi = 1./cp
-      real, parameter :: cap = rd/cp, poo = 1.0e+05
-
       real, parameter :: rw = 461.5              ! gas const. for water vapor
+      REAL, PRIVATE, parameter ::      cpl = 4190.0
+     REAL, PRIVATE, parameter ::      cpigb = 2106.0
+      real, parameter :: cpi = 1./cp
+      real, parameter :: cap = rd/cp
+      real, parameter :: tfrcbw = tfr - cbw
+      real, parameter :: tfrcbi = tfr - cbi
+      real, parameter :: rovcp = rd/cp
+
+      real, parameter :: poo = 1.0e+05
       real, parameter :: advisc0 = 1.832e-05     ! reference dynamic viscosity (SMT; see Beard & Pruppacher 71)
       real, parameter :: advisc1 = 1.718e-05     ! dynamic viscosity constant used in thermal conductivity calc
       real, parameter :: tka0 = 2.43e-02         ! reference thermal conductivity
-      real, parameter :: tfrcbw = tfr - cbw
-      real, parameter :: tfrcbi = tfr - cbi
 
      ! GHB: Needed for eqtset=2 in cm1
 !     REAL, PRIVATE ::      cv = cp - rd
      real, private, parameter ::      cv = 717.0             ! specific heat at constant volume - air
      REAL, PRIVATE, parameter ::      cvv = 1408.5
-     REAL, PRIVATE, parameter ::      cpl = 4190.0
-     REAL, PRIVATE, parameter ::      cpigb = 2106.0
      ! GHB
 
       real, parameter ::  bfnu0 = (rnu + 2.0)/(rnu + 1.0) 
@@ -966,6 +999,7 @@ MODULE module_mp_nssl_2mom
                         icnuclimit,     &
                         irenuc,         &
                         restoreccn, ccntimeconst, cck, &
+                        switchccn, old_cccn,  &
                         ciintmx,        &
                         itype1, itype2, &
                         icenucopt,      &
@@ -1119,7 +1153,8 @@ MODULE module_mp_nssl_2mom
      & nssl_icdx, &
      & nssl_icdxhl, &
      & nssl_icefallfac, &
-     & nssl_snowfallfac &
+     & nssl_snowfallfac, &
+     & myrank, mpiroot &
      )
 
   implicit none
@@ -1133,7 +1168,7 @@ MODULE module_mp_nssl_2mom
      & nssl_snowfallfac 
    integer, intent(in), optional ::  &
      & nssl_icdx, &
-     & nssl_icdxhl
+     & nssl_icdxhl, myrank, mpiroot
 
    integer, intent(in) :: ims,ime, jms,jme, kms,kme
    real,  intent(in), dimension(20) :: nssl_params
@@ -1159,6 +1194,9 @@ MODULE module_mp_nssl_2mom
       logical :: turn_on_ccna, turn_on_cina
       integer :: istat
      
+     IF ( present(idoniconlytmp) ) THEN
+       idoniconly = idoniconlytmp
+     ENDIF
 
      turn_on_ccna = .false.
      turn_on_cina = .false.
@@ -1197,6 +1235,8 @@ MODULE module_mp_nssl_2mom
       ENDIF
 
       
+      ipelec   = Nint(nssl_params(11))
+      isaund   = Nint(nssl_params(12))
 
 
       IF ( .false. ) THEN ! set to true to enable internal namelist read
@@ -1529,6 +1569,35 @@ MODULE module_mp_nssl_2mom
       CALL wrf_error_fatal( 'nssl_2mom_init: Invalid value of ipctmp' )
     ENDIF
 
+! if charging, then add them
+    IF ( ipelec > 0 .and. .not. idoniconly ) THEN
+      lscw  = ltmp+1
+      lscr  = ltmp+2
+      lsci  = ltmp+3
+      lscs  = ltmp+4
+      lsch  = ltmp+5
+      ltmp = lsch
+      IF ( lhl > 1 ) THEN
+       ltmp = ltmp + 1
+       lschl = ltmp
+      ENDIF
+
+      denscale(lscw:ltmp) = 1
+
+      lscpi = ltmp+1
+      lscni = ltmp+2
+      ltmp = lscni
+    ENDIF
+!    write(0,*) 'lscw,etc. = ',lscw,lscr,lsci,lscs,lsch,lschl
+
+
+      IF ( nonigrd .eq. -1 .and. ipelec .gt. 0 ) THEN
+       open(unit=90,file='takahashi.txt',form='formatted')
+       DO i=nlwc,0,-1
+        read(90,*) (takalu(j,i), j=0,31)
+       END DO
+       close(90)
+      END IF
 
 
     
@@ -1766,6 +1835,11 @@ MODULE module_mp_nssl_2mom
       IF ( lzr > 0 ) irfall = 0
 
       qccn = ccn/rho00
+      IF ( old_cccn > 0.0 ) THEN
+         old_qccn = old_cccn/rho00
+      ELSE
+         old_qccn = qccn
+      ENDIF
 !      xvcmx = (4./3.)*pi*xcradmx**3
 
 ! set max rain diameter
@@ -1970,8 +2044,8 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
                               SNOWNC, SNOWNCV, GRPLNC, GRPLNCV,                         &
                               SR,HAILNC, HAILNCV,                                       &
                               tkediss,                                                  &
-                              re_cloud, re_ice, re_snow,                                &
-                              has_reqc, has_reqi, has_reqs,                             &
+                              re_cloud, re_ice, re_snow, re_rain,                       &
+                              has_reqc, has_reqi, has_reqs, has_reqr,                   &
                               rainncw2, rainnci2,                                       &
                               dbz, vzf,compdbz,                                         &
                               rscghis_2d,rscghis_2dp,rscghis_2dn,                       &
@@ -2003,8 +2077,22 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
                               its,ite, jts,jte, kts,kte)                                   ! tile dims
 
 
+! space line
+#if ( defined(DM_PARALLEL)  &&   ! defined(STUBMPI) )
+#define MPI
+      USE module_dm, ONLY : &
+         local_communicator, mytask
+! keep a spacing line here to keep Apple cpp from adding a space in front of the endif
+#endif
 
       implicit none
+! 
+#if ( defined(DM_PARALLEL)  &&   ! defined(STUBMPI) ) || defined(MPI)
+      INCLUDE 'mpif.h'
+#else
+      integer :: mytask = 0
+
+#endif
 
 
  !Subroutine arguments:
@@ -2060,9 +2148,10 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
                             SNOWNC,SNOWNCV,GRPLNC,GRPLNCV,SR        ! accumulated precip (NC) and rate (NCV)
       real, dimension(ims:ime, jms:jme), optional, intent(inout)::                                 &
                             HAILNC,HAILNCV ! accumulated precip (NC) and rate (NCV)
-      REAL, DIMENSION(ims:ime, kms:kme, jms:jme), optional, INTENT(INOUT)::  re_cloud, re_ice, re_snow
+      integer, parameter :: nproc = 1
+      REAL, DIMENSION(ims:ime, kms:kme, jms:jme), optional, INTENT(INOUT)::  re_cloud, re_ice, re_snow, re_rain
       REAL, DIMENSION(ims:ime, kms:kme, jms:jme), optional, INTENT(IN):: tkediss
-      INTEGER, INTENT(IN), optional :: has_reqc, has_reqi, has_reqs
+      INTEGER, INTENT(IN), optional :: has_reqc, has_reqi, has_reqs, has_reqr
       real, dimension(ims:ime, jms:jme), intent(out), optional ::                                 &
                             rainncw2, rainnci2       ! liquid rain, ice, accumulation rates
       real, optional, intent(in) :: dx,dy
@@ -2070,6 +2159,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
       integer, intent(in):: itimestep !, ccntype
       logical, optional, intent(in) :: diagflag, f_cna, f_cn, f_cina
       integer, optional, intent(in) :: ipelectmp, ke_diag
+
 
   LOGICAL, INTENT(IN), OPTIONAL ::    nssl_progn   ! flags for wrf-chem 
   
@@ -2097,6 +2187,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
 ! local variables
 !
      real, dimension(its:ite, 1, kts:kte) :: elec2 ! ez = elecsave slab
+     real, dimension(its:ite, 1, kts:kte) :: sciona2d
 !     real, dimension(its:ite, 1, kts:kte,2) :: scion2 ! 1=- , 2=+
      real, dimension(its:ite, kts:kte) :: rainprod2d, evapprod2d,tke2d
      real, dimension(its:ite, 1, kts:kte, na) :: an, ancuten
@@ -2104,6 +2195,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
      real, dimension(its:ite, 1, kts:kte) :: t0,t1,t2,t3,t4,t5,t6,t7,t8,t9
      real, dimension(its:ite, 1, kts:kte) :: dn1,t00,t77,ssat,pn,wn,dz2d,dz2dinv,dbz2d,vzf2d
      real, dimension(its:ite, 1, na) :: xfall
+     real, dimension(kts:kte, nproc) :: thproclocal
      integer, parameter :: nor = 0, ng = 0
      integer :: nx,ny,nz
      integer ix,jy,kz,i,j,k,il,n
@@ -2116,12 +2208,29 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
      real    :: dbzmx,refl
      integer :: vzflag0 = 0
      logical :: makediag
+     real    :: dx1,dy1
       real, parameter :: cnin20 = 1.0e3
       real, parameter :: cnin10 = 5.0e1
       real, parameter :: cnin1a = 4.5
       real, parameter :: cnin2a = 12.96
       real, parameter :: cnin2b = 0.639
 
+      double precision :: chgneg1,chgpos1,chgneg2,chgpos2,chgneg3,chgpos3
+      double precision :: chgiona1,chgiona2,chgiona3,sctot3,scwtot,scrtot,scitot,scstot,schtot,schltot
+      double precision :: scwmax,scrmax,scimax,scsmax,schmax,schlmax
+      double precision :: scwmin,scrmin,scimin,scsmin,schmin,schlmin
+!c
+!c integrated charging rate pos/neg
+!c
+      double precision :: ctswin,ctswip
+      double precision :: ctswwn,ctswwp
+      double precision :: ctghsn,ctghsp
+      double precision :: ctghin,ctghip
+      double precision :: ctghwn,ctghwp
+      double precision :: ctgsn,ctgsp
+      double precision :: ctgin,ctgip
+      double precision :: cthsn,cthsp
+      double precision :: cthin,cthip
       double precision :: cwmass1,cwmass2
       double precision :: rwmass1,rwmass2
       double precision :: icemass1,icemass2
@@ -2202,6 +2311,41 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
 !       ENDDO
 !       ENDIF
 
+     IF ( present( dx ) .and. present( dy ) ) THEN
+        dx1 = dx
+        dy1 = dy
+     ELSE
+        dx1 = 1.0
+        dy1 = 1.0
+     ENDIF
+
+
+     IF ( present( dx ) .and. present( dy ) ) THEN
+     jchgs = Max(3,Nint(charging_border/dy)) ! number of points near boundary where charging is turned off (to keep lightning from getting wonky)
+     jchgn = Max(3,Nint(charging_border/dy))
+     ichge = Max(3,Nint(charging_border/dx))
+     ichgw = Max(3,Nint(charging_border/dx))
+     ENDIF
+
+     IF ( cleardiag ) THEN
+!       IF ( present( rscghis_3d ) ) THEN
+!       DO jy = jts,jte
+!         DO kz = kts,kte
+!           DO ix = its,ite
+!             rscghis_3d(ix,kz,jy) = 0.0
+!           ENDDO
+!         ENDDO
+!       ENDDO
+!       ENDIF
+
+       IF ( present( rscghis_2d ) ) THEN
+       DO jy = jts,jte
+         DO ix = its,ite
+            rscghis_2d(ix,jy) = 0.0
+         ENDDO
+       ENDDO
+       ENDIF
+     ENDIF
      
      makediag = .true.
      IF ( present( diagflag ) ) THEN
@@ -2218,6 +2362,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
      IF ( .not. present( cn ) ) THEN
        renucfrac = 1.0
      ENDIF
+
      
 ! set up CCN array and some other static local values
      IF ( itimestep == 1 .and. .not. invertccn .and.  present( cn ) ) THEN
@@ -2267,6 +2412,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
        ENDDO
        ENDIF
 
+
 !     ENDIF ! itimestep == 1
 
 
@@ -2314,11 +2460,77 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
       timegs = 0.0d0
       timenucond = 0.0d0
 
+     chgiona1 = 0.0d0
+     chgiona2 = 0.0d0
+     chgiona3 = 0.0d0
+     chgneg1 = 0.0
+     chgpos1 = 0.0
+     chgneg2 = 0.0
+     chgpos2 = 0.0
+     chgneg3 = 0.0
+     chgpos3 = 0.0
+     sctot3  = 0.0d0
+     scwtot  = 0.0d0
+     scrtot  = 0.0d0
+     scitot  = 0.0d0
+     scstot  = 0.0d0
+     schtot  = 0.0d0
+     schltot  = 0.0d0
+
+     scwmax  = 0.0d0
+     scrmax  = 0.0d0
+     scimax  = 0.0d0
+     scsmax  = 0.0d0
+     schmax  = 0.0d0
+     schlmax  = 0.0d0
+
+     scwmin  = 0.0d0
+     scrmin  = 0.0d0
+     scimin  = 0.0d0
+     scsmin  = 0.0d0
+     schmin  = 0.0d0
+     schlmin  = 0.0d0
+
+     cwmass1 = 0.0d0
+     cwmass2 = 0.0d0
+     rwmass1 = 0.0d0
+     rwmass2 = 0.0d0
+     icemass1 = 0.0d0
+     icemass2 = 0.0d0
+     swmass1 = 0.0d0
+     swmass2 = 0.0d0
+     grmass1 = 0.0d0
+     grmass2 = 0.0d0
+     hlmass1 = 0.0d0
+     hlmass2 = 0.0d0
+     wvol5  = 0.0d0
+     wvol10 = 0.0d0
+
+      ctswin = 0.0
+      ctswip = 0.0
+      ctswwn = 0.0
+      ctswwp = 0.0
+      ctghsn = 0.0
+      ctghsp = 0.0
+      ctghin = 0.0
+      ctghip = 0.0
+      ctghwn = 0.0
+      ctghwp = 0.0
+      ctgsn = 0.0
+      ctgsp = 0.0
+      ctgin = 0.0
+      ctgip = 0.0
+      cthsn = 0.0
+      cthsp = 0.0
+      cthin = 0.0
+      cthip = 0.0
+      
 
 
 !     write(0,*) 'N2M: jy loop 1, lhl,na = ',lhl,na,present(qhl)
 
           ancuten(its:ite,1,kts:kte,:) = 0.0
+          thproclocal(:,:) = 0.0
 
      DO jy = jts,jye
      
@@ -2402,6 +2614,44 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
           
 
 
+!     space charge
+          IF ( present(scw) .and. ipelec > 0 ) THEN
+
+          an(ix,1,kz,lscw)   = scw(ix,kz,jy)
+          an(ix,1,kz,lscr)   = scr(ix,kz,jy)
+          an(ix,1,kz,lsci)   = sci(ix,kz,jy)
+          an(ix,1,kz,lscs)   = scs(ix,kz,jy)
+          an(ix,1,kz,lsch)   = sch(ix,kz,jy)
+          IF ( lhl > 1 ) an(ix,1,kz,lschl)   = schl(ix,kz,jy)
+          
+          ! Fake ions for now -- will need to change this if real ions ever get used in WRF
+          ! convert net ion density to positive or negative ions, so that underlying code is
+          ! still ion-friendly
+!          scion2(ix,1,kz,1) = 0.0
+!          scion2(ix,1,kz,2) = 0.0
+             an(ix,1,kz,lscpi) = Max(0.0, sciona(ix,kz,jy))*eci*dn(ix,kz,jy)
+             an(ix,1,kz,lscni) = -Min(0.0,sciona(ix,kz,jy))*eci*dn(ix,kz,jy)
+          sciona2d(ix,1,kz)   = sciona(ix,kz,jy)*dn(ix,kz,jy)
+          
+          tmp =  dn(ix,kz,jy)*(an(ix,1,kz,lscw)+an(ix,1,kz,lscr)+an(ix,1,kz,lsci)+ &
+     &                         an(ix,1,kz,lscs)+an(ix,1,kz,lsch)+an(ix,1,kz,lschl)+ &
+     &                         sciona(ix,kz,jy) )*dx*dy*dz(ix,kz,jy)
+          chgneg1 = chgneg1 + Min(0.0, tmp)
+          chgpos1 = chgpos1 + Max(0.0, tmp)
+!          chgiona1 = chgiona1 + sciona(ix,kz,jy)*dn(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
+          chgiona1 = chgiona1 + (an(ix,1,kz,lscpi)-an(ix,1,kz,lscni))*ec*dn(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
+
+          
+
+!          IF ( present(elec) .and. ipelec > 1) THEN
+          IF (  ipelec > 1) THEN
+
+          elec2(ix,1,kz)   =  elec(ix,kz,jy) ! Ez here =elecsave
+!         sctot is only passed out  - not in nssl 2 mom
+
+          ENDIF
+    
+          ENDIF ! scw
 
           
           t0(ix,1,kz) = th(ix,kz,jy)*pii(ix,kz,jy) ! temperature (Kelvin)
@@ -2607,7 +2857,13 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
            ENDIF
          ENDIF
          IF ( present( SNOWNCV ) ) SNOWNCV(ix,jy) = dtp*dn1(ix,1,1)*xfall(ix,1,ls)*1000./xdn0(lr)
-         IF ( present( GRPLNCV ) ) GRPLNCV(ix,jy) = dtp*dn1(ix,1,1)*xfall(ix,1,lh)*1000./xdn0(lr)
+         IF ( present( GRPLNCV ) ) THEN 
+           IF ( lhl > 1 .and. .not. present( HAILNC) ) THEN ! if no separate hail accum, then add to graupel
+             GRPLNCV(ix,jy) = dtp*dn1(ix,1,1)*(xfall(ix,1,lh) + xfall(ix,1,lhl)) *1000./xdn0(lr)
+           ELSE
+             GRPLNCV(ix,jy) = dtp*dn1(ix,1,1)*xfall(ix,1,lh)*1000./xdn0(lr)
+           ENDIF
+         ENDIF
          RAINNC(ix,jy)  = RAINNC(ix,jy) + RAINNCV(ix,jy)
 
          IF ( present (SNOWNC) .and. present (SNOWNCV) ) SNOWNC(ix,jy)  = SNOWNC(ix,jy) + SNOWNCV(ix,jy)
@@ -2619,8 +2875,8 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
 !#endif
              HAILNCV(ix,jy) = dtp*dn1(ix,1,1)*xfall(ix,1,lhl)*1000./xdn0(lr)
              HAILNC(ix,jy)  = HAILNC(ix,jy) + HAILNCV(ix,jy)
-           ELSEIF ( present( GRPLNCV ) ) THEN
-             GRPLNCV(ix,jy) = dtp*dn1(ix,1,1)*xfall(ix,1,lhl)*1000./xdn0(lr)
+!           ELSEIF ( present( GRPLNCV ) ) THEN ! if no separate hail accum, then add to graupel
+!             GRPLNCV(ix,jy) = GRPLNCV(ix,jy) + dtp*dn1(ix,1,1)*xfall(ix,1,lhl)*1000./xdn0(lr)
            ENDIF
          ENDIF
          IF ( present( GRPLNCV ) ) GRPLNC(ix,jy)  = GRPLNC(ix,jy) + GRPLNCV(ix,jy)
@@ -2635,6 +2891,26 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
        
       ENDIF ! .false.
  
+      IF ( present(scw) .and. ipelec >= 1 ) THEN
+       DO kz = kts,kte
+        DO ix = its,ite
+        IF ( lhl > 1 ) THEN
+          tmp =   (an(ix,1,kz,lscw)+an(ix,1,kz,lscr)+an(ix,1,kz,lsci)+ &
+     &             an(ix,1,kz,lscs)+an(ix,1,kz,lsch)+an(ix,1,kz,lschl)+ &
+     &             (an(ix,1,kz,lscpi)-an(ix,1,kz,lscni))*ec )*dx*dy*dz(ix,kz,jy)
+        ELSE
+          tmp =   (an(ix,1,kz,lscw)+an(ix,1,kz,lscr)+an(ix,1,kz,lsci)+ &
+     &             an(ix,1,kz,lscs)+an(ix,1,kz,lsch)+ &
+     &             (an(ix,1,kz,lscpi)-an(ix,1,kz,lscni))*ec )*dx*dy*dz(ix,kz,jy)
+        ENDIF
+          chgneg2 = chgneg2 + Min(0.0, tmp)
+          chgpos2 = chgpos2 + Max(0.0, tmp)
+!          chgiona2 = chgiona2 + sciona(ix,kz,jy)*dn(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
+          chgiona2 = chgiona2 + (an(ix,1,kz,lscpi)-an(ix,1,kz,lscni))*ec*dn(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
+        ENDDO
+       ENDDO
+      ENDIF
+
       IF ( isedonly /= 1 ) THEN
    ! call nssl_2mom_gs: main gather-scatter routine to calculate microphysics
 
@@ -2655,6 +2931,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
 !     &   ln,ipc,lvol,lz,lliq,              &
      &   cdx,                              &
      &   xdn0,dbz2d,tke2d,                 &
+     &   thproclocal,nproc,dx1,dy1,    &
      &   timevtcalc,axtra2d, makediag        &
      &   ,has_wetscav, rainprod2d, evapprod2d  &
      &   ,elec2,its,ids,ide,jds,jde          &
@@ -2662,6 +2939,84 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
 
 
 
+   IF ( ( present( noninduc ) .or.  present( rscghis_2d ) ) .and. ipelec >= 1 ) THEN
+
+       t9(:,1,1) = 0.0
+
+       flag = .true.
+       IF (present(elec_physics) ) THEN
+         IF ( elec_physics == 5 ) flag = .false. ! turn off some arrays
+       ENDIF
+
+       DO kz = kts,kte
+        DO ix = its,ite
+
+          IF ( present( induc ) ) THEN
+            induc(ix,kz,jy)  = t5(ix,1,kz)
+          ENDIF
+          
+          tmp = t2(ix,1,kz) + t3(ix,1,kz) + t6(ix,1,kz) + t8(ix,1,kz)
+          
+          IF ( present( noninduc ) ) THEN
+             noninduc(ix,kz,jy) = tmp
+          ENDIF
+          
+          IF ( present(noninducp) ) THEN
+             noninducp(ix,kz,jy) = noninducp(ix,kz,jy) + dtp*Max(0.0, tmp)
+          ENDIF
+          
+          IF ( present(noninducn) ) THEN
+             noninducn(ix,kz,jy) = noninducn(ix,kz,jy) + dtp*Min(0.0, tmp)
+          ENDIF
+          
+          IF ( present( rscghis_2d ) ) THEN
+             rscghis_2d(ix,jy) = rscghis_2d(ix,jy) + Abs( tmp ) *dz(ix,kz,jy)*dtp
+          ENDIF
+          
+          IF ( present( rscghis_2dp ) ) THEN
+             rscghis_2dp(ix,jy) = rscghis_2dp(ix,jy) + Max( 0.0, tmp ) *dz(ix,kz,jy)*dtp
+          ENDIF
+          
+          IF ( present( rscghis_2dn ) ) THEN
+             rscghis_2dn(ix,jy) = rscghis_2dn(ix,jy) + Min( 0.0, tmp ) *dz(ix,kz,jy)*dtp
+          ENDIF
+          
+          IF ( ipelec > 1 ) THEN
+           
+            ctswin = ctswin + Min( 0.0, t1(ix,1,kz) )*dz(ix,kz,jy)
+            ctswip = ctswip + Max( 0.0, t1(ix,1,kz) )*dz(ix,kz,jy)
+      
+            ctswwn = ctswwn + Min( 0.0, t4(ix,1,kz) )*dz(ix,kz,jy)
+            ctswwp = ctswwp + Max( 0.0, t4(ix,1,kz) )*dz(ix,kz,jy)
+            
+            ctghsn = ctghsn + Min( 0.0, t2(ix,1,kz) + t6(ix,1,kz) )*dz(ix,kz,jy)
+            ctghsp = ctghsp + Max( 0.0, t2(ix,1,kz) + t6(ix,1,kz) )*dz(ix,kz,jy)
+      
+            ctghin = ctghin + Min( 0.0, t3(ix,1,kz) + t8(ix,1,kz) )*dz(ix,kz,jy)
+            ctghip = ctghip + Max( 0.0, t3(ix,1,kz) + t8(ix,1,kz) )*dz(ix,kz,jy)
+      
+            ctghwn = ctghwn + Min( 0.0, t5(ix,1,kz) )*dz(ix,kz,jy)
+            ctghwp = ctghwp + Max( 0.0, t5(ix,1,kz) )*dz(ix,kz,jy)
+      
+            ctgsn = ctgsn + Min( 0.0, t2(ix,1,kz) )*dz(ix,kz,jy)
+            ctgsp = ctgsp + Max( 0.0, t2(ix,1,kz) )*dz(ix,kz,jy)
+      
+            ctgin = ctgin + Min( 0.0, t3(ix,1,kz) )*dz(ix,kz,jy)
+            ctgip = ctgip + Max( 0.0, t3(ix,1,kz) )*dz(ix,kz,jy)
+      
+            cthsn = cthsn + Min( 0.0, t6(ix,1,kz) )*dz(ix,kz,jy)
+            cthsp = cthsp + Max( 0.0, t6(ix,1,kz) )*dz(ix,kz,jy)
+      
+            cthin = cthin + Min( 0.0, t8(ix,1,kz) )*dz(ix,kz,jy)
+            cthip = cthip + Max( 0.0, t8(ix,1,kz) )*dz(ix,kz,jy)
+      
+          ENDIF
+
+        ENDDO
+       ENDDO
+       
+
+   ENDIF
 
 
    ENDIF ! isedonly /= 1
@@ -2681,6 +3036,17 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
 
    ENDIF
 
+
+ IF ( present( sciona ) .and. lnh > 1 .and. ipelec > 0) THEN
+ ! attach ions
+   CALL SCIONATT    &
+     &  (nx,ny,nz,na,jy &
+     &  ,nor,nor &
+     &  ,dtp,dz2d &
+     &  ,an,dn1,t77 &
+     &  ,pn,wn &
+     &  ,dbz2d)
+  ENDIF
 
      IF ( present( pcc2 ) .and. makediag ) THEN
          DO kz = kts,kte
@@ -2743,24 +3109,36 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
              t1(ix,1,kz) = 2.51E-6
              t2(ix,1,kz) = 10.01E-6
              t3(ix,1,kz) = 25.E-6
+             t4(ix,1,kz) = 50.e-6
           ENDDO
          ENDDO
+
 
           call calc_eff_radius   &
      &         (nx,ny,nz,na,jy & 
      &          ,nor,nor & 
-     &          ,t1,t2,t3  & 
-     &          ,an,dn1 )
+     &          ,t1=t1,t2=t2,t3=t3,t4=t4  & 
+     &          ,an=an,dn=dn1 )
 
         DO kz = kts,kte
           DO ix = its,ite
              re_cloud(ix,kz,jy) = MAX(2.51E-6, MIN(t1(ix,1,kz), 50.E-6))
-             re_ice(ix,kz,jy)   = MAX(10.01E-6, MIN(t2(ix,1,kz), 125.E-6))
+             re_ice(ix,kz,jy)   = MAX(10.01E-6, MIN(t2(ix,1,kz), 200.E-6))
              re_snow(ix,kz,jy)  = MAX(25.E-6, MIN(t3(ix,1,kz), 999.E-6))
              ! check for case where snow needs to be treated as cloud ice (for rrtmg radiation)
-             IF ( .not. present(qi) ) re_ice(ix,kz,jy)  = MAX(10.E-6, MIN(t3(ix,1,kz), 125.E-6))
+             IF ( .not. present(qi) ) re_ice(ix,kz,jy)  = MAX(10.E-6, MIN(t3(ix,1,kz), 200.E-6))
           ENDDO
          ENDDO
+
+       IF ( present(has_reqr) .and. present( re_rain ) ) THEN
+         IF ( has_reqr /= 0 ) THEN
+         DO kz = kts,kte
+           DO ix = its,ite
+            re_rain(ix,kz,jy)  = MAX(50.E-6, MIN(t4(ix,1,kz), 2999.E-6))
+           ENDDO
+         ENDDO
+         ENDIF
+       ENDIF
        
          ENDIF
         ENDIF
@@ -2828,6 +3206,102 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
 
 
 
+         IF ( present(dx) .and. present(dy) ) THEN
+         dv1 = dx*dy*dz(ix,kz,jy)
+         dv = dn(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
+         ELSE
+         dv1 = dz(ix,kz,jy)
+         dv = dn(ix,kz,jy)*dz(ix,kz,jy)
+         ENDIF
+         
+         IF ( t0(ix,1,kz) > 273.15 ) THEN
+           cwmass1 = cwmass1 + dv*qc(ix,kz,jy)
+           rwmass1 = rwmass1 + dv*qr(ix,kz,jy)
+           IF ( present(qi) ) icemass1 = icemass1 + dv*qi(ix,kz,jy)
+           swmass1 = swmass1 + dv*qs(ix,kz,jy)
+           grmass1 = grmass1 + dv*qh(ix,kz,jy)
+           IF ( lhl > 1 ) hlmass1 = hlmass1 + dv*qhl(ix,kz,jy)
+         ELSE
+           cwmass2 = cwmass2 + dv*qc(ix,kz,jy)
+           rwmass2 = rwmass2 + dv*qr(ix,kz,jy)
+           IF ( present(qi) ) icemass2 = icemass2 + dv*qi(ix,kz,jy)
+           swmass2 = swmass2 + dv*qs(ix,kz,jy)
+           grmass2 = grmass2 + dv*qh(ix,kz,jy)
+           IF ( lhl > 1 ) hlmass2 = hlmass2 + dv*qhl(ix,kz,jy)
+         ENDIF
+         
+         IF ( wn(ix,1,kz) > 5.0 ) wvol5 = wvol5 + dv1
+         IF ( wn(ix,1,kz) > 10.0 ) wvol10 = wvol10 + dv1
+
+         IF ( present(scw) .and. ipelec > 0 .and. lscw > 1 ) THEN !{
+
+         sciona(ix,kz,jy) = (an(ix,1,kz,lscpi) - an(ix,1,kz,lscni))*ec/dn(ix,kz,jy)
+!         sciona(ix,kz,jy) = (scion2(ix,1,kz,1) - scion2(ix,1,kz,2))*ec/dn(ix,kz,jy)
+!         sciona(ix,kz,jy) = sciona(ix,kz,jy)/dn(ix,kz,jy)
+
+         scw(ix,kz,jy)  = an(ix,1,kz,lscw)
+         scr(ix,kz,jy)  = an(ix,1,kz,lscr)
+         sci(ix,kz,jy)  = an(ix,1,kz,lsci)
+         scs(ix,kz,jy)  = an(ix,1,kz,lscs)
+         sch(ix,kz,jy)  = an(ix,1,kz,lsch)
+         sctot(ix,kz,jy)  = dn(ix,kz,jy)*(scw(ix,kz,jy)+scr(ix,kz,jy)+sci(ix,kz,jy)+scs(ix,kz,jy) &
+      &                     + sch(ix,kz,jy)+sciona(ix,kz,jy) ) ! to get C/m3 for RHS calc later on
+         IF ( lhl > 1 ) THEN
+         schl(ix,kz,jy)  = an(ix,1,kz,lschl)
+         sctot(ix,kz,jy)  = sctot(ix,kz,jy)+dn(ix,kz,jy)*schl(ix,kz,jy)
+        
+         ENDIF
+
+         IF ( .not. ( noninduc(ix,kz,jy) > -1.e-3 .and. noninduc(ix,kz,jy) < 1.e-3 ) ) THEN
+           write(0,*) 'problem with noninduc! ix,jy,kz,noninduc = ',ix,jy,kz,noninduc(ix,kz,jy)
+           STOP
+         ENDIF
+
+         IF ( .not. ( induc(ix,kz,jy) > -1.e-3 .and. induc(ix,kz,jy) < 1.e-3 ) ) THEN
+           write(0,*) 'problem with induc! ix,jy,kz,induc = ',ix,jy,kz,induc(ix,kz,jy),t5(ix,1,kz)
+           STOP
+         ENDIF
+
+
+          tmp =  dn(ix,kz,jy)*(an(ix,1,kz,lscw)+an(ix,1,kz,lscr)+an(ix,1,kz,lsci)+ &
+     &                         an(ix,1,kz,lscs)+an(ix,1,kz,lsch)+an(ix,1,kz,lschl)+sciona(ix,kz,jy) )*dx*dy*dz(ix,kz,jy)
+          chgneg3 = chgneg3 + Min(0.0, tmp)
+          chgpos3 = chgpos3 + Max(0.0, tmp)
+          chgiona3 = chgiona3 + sciona(ix,kz,jy)*dn(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
+
+         IF ( present(elec) .and. ipelec > 1) THEN
+
+         scion(ix,kz,jy,1)  = an(ix,1,kz,lscpi) ! scion2(ix,1,kz,1)
+         scion(ix,kz,jy,2)  = an(ix,1,kz,lscni) ! scion2(ix,1,kz,2)
+
+         ENDIF
+
+
+         IF ( present(elec) ) THEN
+           sctot3 = sctot3 + sctot(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
+           scwtot  = scwtot + scw(ix,kz,jy)*dv
+           scrtot  = scrtot + scr(ix,kz,jy)*dv
+           scitot  = scitot + sci(ix,kz,jy)*dv
+           scstot  = scstot + scs(ix,kz,jy)*dv
+           schtot  = schtot + sch(ix,kz,jy)*dv
+           schltot = schltot + schl(ix,kz,jy)*dv
+           
+           scwmax = Max( scwmax, scw(ix,kz,jy) )
+           scrmax = Max( scrmax, scr(ix,kz,jy) )
+           scimax = Max( scimax, sci(ix,kz,jy) )
+           scsmax = Max( scsmax, scs(ix,kz,jy) )
+           schmax = Max( schmax, sch(ix,kz,jy) )
+           IF ( lhl > 1 ) schlmax= Max(schlmax, schl(ix,kz,jy) )
+
+           scwmin = Min( scwmin, scw(ix,kz,jy) )
+           scrmin = Min( scrmin, scr(ix,kz,jy) )
+           scimin = Min( scimin, sci(ix,kz,jy) )
+           scsmin = Min( scsmin, scs(ix,kz,jy) )
+           schmin = Min( schmin, sch(ix,kz,jy) )
+           IF ( lhl > 1 ) schlmin= Min(schlmin, schl(ix,kz,jy) )
+           
+         ENDIF
+         ENDIF !}
 
          IF ( lvh > 0 )  vhw(ix,kz,jy) = an(ix,1,kz,lvh)
          IF ( lvhl > 0 .and. present( vhl ) ) vhl(ix,kz,jy) = an(ix,1,kz,lvhl)
@@ -2843,6 +3317,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
        ENDDO
   
      ENDDO ! jy
+
      
       IF (  invertccn .and. present( cn ) ) THEN ! hack to convert unactivated ccn  back to activated
         DO jy = jts,jte
@@ -2855,6 +3330,223 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
        ENDIF
 
 
+
+
+#ifdef DM_PARALLEL
+       mpitotindp(1)  = cwmass1
+       mpitotindp(2)  = cwmass2
+       mpitotindp(3)  = rwmass1
+       mpitotindp(4)  = rwmass2
+       mpitotindp(5)  = icemass1
+       mpitotindp(6)  = icemass2
+       mpitotindp(7)  = swmass1
+       mpitotindp(8)  = swmass2
+       mpitotindp(9)  = grmass1
+       mpitotindp(10) = grmass2
+       mpitotindp(11) = hlmass1
+       mpitotindp(12) = hlmass2
+       mpitotindp(13) = wvol5
+       mpitotindp(14) = wvol10
+
+
+      CALL MPI_Reduce(mpitotindp, mpitotoutdp, 14, MPI_DOUBLE_PRECISION, MPI_SUM, 0, local_communicator, mpi_error_code)
+
+       IF ( mytask == 0 ) THEN
+       cwmass1  = mpitotoutdp(1)  
+       cwmass2  = mpitotoutdp(2)  
+       rwmass1  = mpitotoutdp(3)  
+       rwmass2  = mpitotoutdp(4)  
+       icemass1 = mpitotoutdp(5)  
+       icemass2 = mpitotoutdp(6)  
+       swmass1  = mpitotoutdp(7)  
+       swmass2  = mpitotoutdp(8)  
+       grmass1  = mpitotoutdp(9)  
+       grmass2  = mpitotoutdp(10)  
+       hlmass1  = mpitotoutdp(11)  
+       hlmass2  = mpitotoutdp(12)  
+       wvol5    = mpitotoutdp(13)  
+       wvol10   = mpitotoutdp(14)  
+       ENDIF
+
+
+     IF ( present( scw ) ) THEN
+! #ifdef MPI
+! #ifdef DM_PARALLEL
+! find global integrated rate totals
+       mpitotindp(1)  = ctswin
+       mpitotindp(2)  = ctghsn
+       mpitotindp(3)  = ctghin
+       mpitotindp(4)  = ctghwn
+       mpitotindp(5)  = ctgsn
+       mpitotindp(6)  = ctgin
+       mpitotindp(7)  = cthsn
+       mpitotindp(8)  = cthin
+       
+       mpitotindp(9)  = ctswip
+       mpitotindp(10)  = ctghsp
+       mpitotindp(11)  = ctghip
+       mpitotindp(12)  = ctghwp
+       mpitotindp(13)  = ctgsp
+       mpitotindp(14)  = ctgip
+       mpitotindp(15)  = cthsp
+       mpitotindp(16)  = cthip
+
+
+       mpitotindp(17)  = ctswwn
+       mpitotindp(18)  = ctswwp
+
+      CALL MPI_Reduce(mpitotindp, mpitotoutdp, 18, MPI_DOUBLE_PRECISION, MPI_SUM, 0, local_communicator, mpi_error_code)
+
+       
+      IF ( mytask == 0 ) THEN
+       ctswin = mpitotoutdp(1)  
+       ctghsn = mpitotoutdp(2)  
+       ctghin = mpitotoutdp(3)  
+       ctghwn = mpitotoutdp(4)  
+       ctgsn = mpitotoutdp(5)  
+       ctgin = mpitotoutdp(6)  
+       cthsn = mpitotoutdp(7)  
+       cthin = mpitotoutdp(8) 
+
+       ctswip = mpitotoutdp(9)  
+       ctghsp = mpitotoutdp(10)  
+       ctghip = mpitotoutdp(11)  
+       ctghwp = mpitotoutdp(12)  
+       ctgsp = mpitotoutdp(13)  
+       ctgip = mpitotoutdp(14)  
+       cthsp = mpitotoutdp(15)  
+       cthip = mpitotoutdp(16) 
+
+       ctswwn = mpitotoutdp(17)
+       ctswwp = mpitotoutdp(18)
+      ENDIF
+
+
+
+       mpitotindp(1)  = chgpos1
+       mpitotindp(2)  = chgneg1
+       mpitotindp(3)  = chgpos2
+       mpitotindp(4)  = chgneg2
+       mpitotindp(5)  = chgpos3
+       mpitotindp(6)  = chgneg3
+       mpitotindp(7)  = chgiona1
+       mpitotindp(8)  = chgiona2
+       mpitotindp(9)  = chgiona3
+       mpitotindp(10)  = sctot3
+       mpitotindp(11)  = scwtot 
+       mpitotindp(12)  = scrtot 
+       mpitotindp(13)  = scitot 
+       mpitotindp(14)  = scstot 
+       mpitotindp(15)  = schtot 
+       mpitotindp(16)  = schltot
+
+
+
+
+
+      CALL MPI_Reduce(mpitotindp, mpitotoutdp, 16, MPI_DOUBLE_PRECISION, MPI_SUM, 0, local_communicator, mpi_error_code)
+
+       IF ( mytask == 0 ) THEN
+       chgpos1 = mpitotoutdp(1)  
+       chgneg1 = mpitotoutdp(2)  
+       chgpos2 = mpitotoutdp(3)  
+       chgneg2 = mpitotoutdp(4)  
+       chgpos3 = mpitotoutdp(5)  
+       chgneg3 = mpitotoutdp(6)  
+       chgiona1 = mpitotoutdp(7)  
+       chgiona2 = mpitotoutdp(8)  
+       chgiona3 = mpitotoutdp(9)  
+       sctot3   = mpitotoutdp(10)  
+       scwtot  = mpitotoutdp(11)  
+       scrtot  = mpitotoutdp(12)  
+       scitot  = mpitotoutdp(13)  
+       scstot  = mpitotoutdp(14)  
+       schtot  = mpitotoutdp(15)  
+       schltot = mpitotoutdp(16)  
+       ENDIF
+
+       mpitotindp(1)  = scwmax 
+       mpitotindp(2)  = scrmax 
+       mpitotindp(3)  = scimax 
+       mpitotindp(4)  = scsmax 
+       mpitotindp(5)  = schmax 
+       mpitotindp(6)  = schlmax
+       mpitotindp(7)  = -scwmin 
+       mpitotindp(8)  = -scrmin 
+       mpitotindp(9)  = -scimin 
+       mpitotindp(10) = -scsmin 
+       mpitotindp(11) = -schmin 
+       mpitotindp(12) = -schlmin
+
+      CALL MPI_Reduce(mpitotindp, mpitotoutdp, 16, MPI_DOUBLE_PRECISION, MPI_MAX, 0, local_communicator, mpi_error_code)
+
+       IF ( mytask == 0 ) THEN
+       scwmax  = mpitotoutdp(1)  
+       scrmax  = mpitotoutdp(2)  
+       scimax  = mpitotoutdp(3)  
+       scsmax  = mpitotoutdp(4)  
+       schmax  = mpitotoutdp(5)  
+       schlmax = mpitotoutdp(6)  
+       scwmin  = -mpitotoutdp(7)  
+       scrmin  = -mpitotoutdp(8)  
+       scimin  = -mpitotoutdp(9)  
+       scsmin  = -mpitotoutdp(10)  
+       schmin  = -mpitotoutdp(11)  
+       schlmin = -mpitotoutdp(12)  
+       ENDIF
+
+
+         IF ( present(scw) .and. ipelec > 0 .and. mytask == 0 ) THEN !{
+!#else
+#else
+         IF ( present(scw) .and. ipelec > 0 ) THEN !{
+! #endif
+#endif
+           iunit = 6
+!           write(iunit,*) 'pos/neg/tot 1 = ',chgpos1,chgneg1,chgpos1+chgneg1
+!           write(iunit,*) 'pos/neg/tot 2 = ',chgpos2,chgneg2,chgpos2+chgneg2
+           write(iunit,'(a,3(2x,1pe13.5))' ) 'pos/neg/tot = ',chgpos3,chgneg3,chgpos3+chgneg3
+           write(iunit,'(a,3(2x,1pe13.5))') 'chgiona1/2/3 = ',chgiona1,chgiona2,chgiona3
+!           write(iunit,*) 'sctot3 = ',sctot3
+           write(iunit,'(a,3(2x,1pe13.5))') 'scwtot,max,min  = ',scwtot, scwmax, scwmin 
+           write(iunit,'(a,3(2x,1pe13.5))') 'scrtot,max,min  = ',scrtot, scrmax, scrmin 
+           write(iunit,'(a,3(2x,1pe13.5))') 'scitot,max,min  = ',scitot, scimax, scimin 
+           write(iunit,'(a,3(2x,1pe13.5))') 'scstot,max,min  = ',scstot, scsmax, scsmin 
+           write(iunit,'(a,3(2x,1pe13.5))') 'schtot,max,min  = ',schtot, schmax, schmin 
+           write(iunit,'(a,3(2x,1pe13.5))') 'schltot,max,min = ',schltot,schlmax,schlmin
+
+! write out the integrated charge rates
+         IF ( mytask == 0 ) THEN
+           write(iunit,'(a)') 'Integrated pos/neg charging rates:'
+           write(iunit,'(2(a,1pe12.5))') 'ctswin,ctswip = ',ctswin*dx1*dy1,', ',ctswip*dx1*dy1
+           write(iunit,'(2(a,1pe12.5))') 'ctghsn,ctghsp = ',ctghsn*dx1*dy1,', ',ctghsp*dx1*dy1
+           write(iunit,'(2(a,1pe12.5))') 'ctghin,ctghip = ',ctghin*dx1*dy1,', ',ctghip*dx1*dy1
+           write(iunit,'(2(a,1pe12.5))') 'ctghwn,ctghwp = ',ctghwn*dx1*dy1,', ',ctghwp*dx1*dy1
+           write(iunit,'(2(a,1pe12.5))') 'ctgsn,ctgsp = ',ctgsn*dx1*dy1,', ',ctgsp*dx1*dy1
+           write(iunit,'(2(a,1pe12.5))') 'ctgin,ctgip = ',ctgin*dx1*dy1,', ',ctgip*dx1*dy1
+           write(iunit,'(2(a,1pe12.5))') 'cthsn,cthsp = ',cthsn*dx1*dy1,', ',cthsp*dx1*dy1
+           write(iunit,'(2(a,1pe12.5))') 'cthin,cthip = ',cthin*dx1*dy1,', ',cthip*dx1*dy1
+           write(iunit,'(2(a,1pe12.5))') 'ctswwn,ctswwp = ',ctswwn*dx1*dy1,', ',ctswwp*dx1*dy1
+         ENDIF
+
+! #if defined( 1 ) && !defined( CHGNIONLY )
+
+         IF ( mytask == 0 ) THEN
+           iunit = 6
+          write(iunit,'(a,3(2x,1pe13.5))') 'cwmass1,2,tot = ',cwmass1, cwmass2, cwmass1+cwmass2
+          write(iunit,'(a,3(2x,1pe13.5))') 'rwmass1,2,tot = ',rwmass1, rwmass2, rwmass1+rwmass2
+          write(iunit,'(a,3(2x,1pe13.5))') 'icemass1,2,tot = ',icemass1, icemass2, icemass1+icemass2
+          write(iunit,'(a,3(2x,1pe13.5))') 'swmass1,2,tot = ',swmass1, swmass2, swmass1+swmass2
+          write(iunit,'(a,3(2x,1pe13.5))') 'grmass1,2,tot = ',grmass1, grmass2, grmass1+grmass2
+          write(iunit,'(a,3(2x,1pe13.5))') 'hlmass1,2,tot = ',hlmass1, hlmass2, hlmass1+hlmass2
+          write(iunit,'(a,2(2x,1pe13.5))') 'wvol5,wvol10 = ',wvol5,wvol10
+         ENDIF
+         ENDIF
+! #endif
+
+#ifdef DM_PARALLEL
+       ENDIF
+#endif
 
 
 
@@ -3429,7 +4121,7 @@ END SUBROUTINE nssl_2mom_driver
         del = tmp - dgam*i
         IF ( i+1 > ngm0 ) THEN
           write(0,*) 'delabk: i+1 > ngm0!!!!',i,ngm0,nua,mua,tmp
-          STOP
+           STOP
         ENDIF
         g1pnua = gmoi(i) + (gmoi(i+1) - gmoi(i))*del*dgami
 !        write(91,*) 'delabk: g1pnua,gamma = ',g1pnua,Gamma_sp((1. + nua)/mua)
@@ -3717,13 +4409,15 @@ END SUBROUTINE nssl_2mom_driver
 
       DO n = 1,ndfall
 
-      IF ( do_accurate_sedimentation .and. n .ge. 2 .and. ( n == n*(n/interval_sedi_vt) ) ) THEN
+      IF ( do_accurate_sedimentation .and. n .ge. 2 .and. ( n == interval_sedi_vt*(n/interval_sedi_vt) ) ) THEN
 !
 !  zero the precip flux arrays (2d)
 !
       
-!      xvt(:,:,:,il) = 0.0
       dummy = 0.d0
+
+      xvt(kzb:kze,ix,1:3,il) = 0.0 ! reset to zero because routine will only compute points with q > qmin
+
       call ziegfall1d(nx,ny,nz,nor,norz,na,dtp,jgs,ix, & 
      &  xvt, rhovtzx, & 
      &  an,dn,ipconc,t0,t7,cwmasn,cwmasx, & 
@@ -3774,6 +4468,14 @@ END SUBROUTINE nssl_2mom_driver
         ENDIF
       ENDIF
 
+! charge
+
+      IF ( ipelec > 0 ) THEN
+        IF ( lsc(il) .gt. 1 ) THEN
+         call fallout1d(nx,ny,nz,nor,na,dtptmp,dtfrac,jgs,xvt(1,1,1,il), &
+     &              an,db1,lsc(il),0,xfall,dtz1,ix)
+        ENDIF
+      ENDIF
 
       if (ndebug .gt. 0 ) write(0,*) 'dbg = 3d'
 
@@ -4314,18 +5016,172 @@ END SUBROUTINE nssl_2mom_driver
 
       END subroutine calcnfromz1d
 
+! #####################################################################
+! #####################################################################
+!
+! Subroutine for reattachment of floating ion charge
+!
+   SUBROUTINE SCIONATT    &
+     &  (nx,ny,nz,na,jyslab &
+     &  ,nor,norz &
+     &  ,dtp,dz3d &
+     &  ,an,dn,p2 &
+     &  ,pn,w &
+     &  ,tmp3d)
+
+   implicit none
+
+      integer :: nx,ny,nz,na
+      integer :: ng
+      integer :: nor,norz, jyslab ! ,nht,ngt,igsr
+      real    :: dtp  ! time step
+
+
+!
+! external temporary arrays
+!
+
+      real p2(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz)  ! perturbation Pi
+      real pn(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz)
+      real an(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz,na)
+      real dn(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz)
+
+      real w(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz)
+!      real qv(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz)
+
+
+      real dz3d(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz)
+
+      real tmp3d(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz)
+
+!      real scion2(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz,2)
+
+    ! local
+
+      integer ix,jy,kz,i,n
+
+      double precision frachl
+      double precision frach
+      double precision fracr
+      double precision fracw
+      double precision fraci
+      double precision fracs
+      double precision fractot,frac
+      double precision dv, deninv, tmp, tmpion
+
+      real    :: rhos = 100.
+      real    :: rhog = 500. ! not correct, but for now
+      real    :: rhoh = 900.
+      real    :: rhor = 1000.
+      real    :: rhoi = 900.
+      real    :: rhow = 1000.
+      
+      logical, parameter :: dampicecharge = .false.    ! whether to apply charge damping to cloud ice and snow (WRF ONLY)
+      real, parameter    :: dampchargethresh = 0.09e-9 ! charge density magnitude at which damping stops
+      real, parameter    :: dampchargetimeconst = 3600. ! time constant for charge damping
+
+      IF ( lnh < 1 ) THEN ! not double-moment
+        RETURN
+      ENDIF
+
+      DO kz = 1,nz
+        DO jy = 1,1
+          DO ix = 1,nx
+           IF ( an(ix,jy,kz,lscpi) - an(ix,jy,kz,lscni) /= 0.0 ) THEN
+             fracs = 0.0
+             fraci = 0.0
+             frach = 0.0
+             fracw = 0.0
+             fracr = 0.0
+             frachl = 0.0
+             if (an(ix,jy,kz,lc) > qxmin(lc)) fracw=((an(ix,jy,kz,lc)/rhow)**(2./3.) ) * Max(an(ix,jy,kz,lnc), 0.0)**(1./3.)
+             if (an(ix,jy,kz,lr) > qxmin(lr)) fracr=((an(ix,jy,kz,lr)/rhor)**(2./3.) ) * Max(an(ix,jy,kz,lnr), 0.0)**(1./3.)
+             if (an(ix,jy,kz,li) > qxmin(li)) fraci=((an(ix,jy,kz,li)/rhoi)**(2./3.) ) * Max(an(ix,jy,kz,lni), 0.0)**(1./3.)
+             if (an(ix,jy,kz,ls) > qxmin(ls)) fracs=((an(ix,jy,kz,ls)/rhos)**(2./3.) ) * Max(an(ix,jy,kz,lns), 0.0)**(1./3.)
+             if (an(ix,jy,kz,lh) > qxmin(lh)) frach=((an(ix,jy,kz,lh)/rhog)**(2./3.) ) * Max(an(ix,jy,kz,lnh), 0.0)**(1./3.)
+             IF ( lhl > 1 ) THEN
+              if (an(ix,jy,kz,lhl) > qxmin(lhl)) frachl=((an(ix,jy,kz,lhl)/rhoh)**(2./3.) ) * Max(an(ix,jy,kz,lnhl), 0.0)**(1./3.)
+             ENDIF
+            
+            
+            fractot = fracw + fracr + fraci + fracs + frach + frachl
+       
+            IF ( fractot > 0.0 ) THEN
+              tmpion = (an(ix,jy,kz,lscpi) - an(ix,jy,kz,lscni))*ec
+
+             IF (fracw > 0) then
+               an(ix,jy,kz,lscw) = an(ix,jy,kz,lscw) + tmpion*(fracw/fractot)
+             ENDIF
+
+             IF (fracr > 0) then
+               an(ix,jy,kz,lscr) = an(ix,jy,kz,lscr) + tmpion*(fracr/fractot)
+             ENDIF
+
+             IF (fraci > 0) then
+               an(ix,jy,kz,lsci) = an(ix,jy,kz,lsci) + tmpion*(fraci/fractot)
+             ENDIF
+
+             IF (fracs > 0) then ! avoid division by zero IF fractot = 0 because qx=0
+               an(ix,jy,kz,lscs) = an(ix,jy,kz,lscs) + tmpion*(fracs/fractot)
+             ENDIF
+
+             IF (frach > 0) then
+               an(ix,jy,kz,lsch) = an(ix,jy,kz,lsch) + tmpion*(frach/fractot)
+             ENDIF
+   
+             IF (lnhl > 1 .and. frachl > 0 ) then
+               an(ix,jy,kz,lschl) = an(ix,jy,kz,lschl) + tmpion*(frachl/fractot)
+             ENDIF
+              
+              
+             an(ix,jy,kz,lscpi) = 0.0
+             an(ix,jy,kz,lscni) = 0.0
+             
+            ENDIF ! fractot
+             
+            
+            ENDIF ! non-zero ion charge
+            
+          ENDDO
+        ENDDO
+      ENDDO
+      
+      IF ( dampicecharge ) THEN
+      frac = Exp(-dtp/dampchargetimeconst)
+      DO kz = 1,nz
+        DO jy = 1,1
+          DO ix = 1,nx
+             IF ( Abs( an(ix,jy,kz,lsci) ) > dampchargethresh ) THEN
+               an(ix,jy,kz,lsci) = frac*an(ix,jy,kz,lsci)
+             ENDIF
+
+             IF ( Abs( an(ix,jy,kz,lscs) ) > dampchargethresh ) THEN 
+               an(ix,jy,kz,lscs) = frac*an(ix,jy,kz,lscs)
+             ENDIF
+            
+          ENDDO
+        ENDDO
+      ENDDO
+      ENDIF
+      
+      RETURN
+      END SUBROUTINE SCIONATT
 
 ! ##############################################################################
 ! ##############################################################################
 !
 !  Subroutine to calculate number concentrations from initial state that has only mixing ratio.
-!  N will be in #/kg, NOT #/m^3, since sedimentation is done next.
-!
+!  Output N will be in #/m^3 in 'an' array, since sedimentation is done next.
+!  Output ccw,cci etc. will be in #/kg
 
 !
 ! 10.27.2015: Added hail calculation
 !
-      subroutine calcnfromq(nx,ny,nz,an,na,nor,norz,dn)
+      subroutine calcnfromq(nx,ny,nz,an,na,nor,norz,dn, &
+     &  qcw,qci,qsw,qrw,qhw,qhl, &
+     &  ccw,cci,csw,crw,chw,chl, &
+     &  cccn,cccna, vhw,vhl,qv,spechum, invertccn_flag, cwmasin )
+      
 
       
       implicit none
@@ -4335,6 +5191,12 @@ END SUBROUTINE nssl_2mom_driver
       real an(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz,na)  ! scalars (q, N, Z)
 
       real dn(nx,nz+1)  ! air density
+
+      real, optional, dimension(nx,nz), intent(inout) :: qcw,qci,qsw,qrw,qhw,qhl, &
+                                          ccw,cci,csw,crw,chw,chl, &
+                                          cccn,cccna,vhw,vhl,qv, spechum
+      logical, optional, intent(in) :: invertccn_flag
+      real, optional :: cwmasin
       
       integer ixe,kze
       real    alpha
@@ -4346,7 +5208,7 @@ END SUBROUTINE nssl_2mom_driver
       
       
       integer ix,jy,kz
-      double precision vr,q,nrx,nrx2,rd,g1h,g1hl,g1r,g1s,zx,chw,z,znew,zt,zxt,n1,laminv1
+      double precision vr,q,nrx,nrx2,rd,g1h,g1hl,g1r,g1s,zx,z,znew,zt,zxt,n1,laminv1
       double precision :: zr, zs, zh, dninv
       real, parameter :: xn0s = 3.0e6, xn0r = 8.0e6, xn0h = 2.0e5, xn0hl = 4.0e4
       real, parameter :: xdnr = 1000., xdns = 100. ,xdnh = 700.0, xdnhl = 900.0
@@ -4359,11 +5221,24 @@ END SUBROUTINE nssl_2mom_driver
       real, parameter :: xgms=xdnh*0.523599*(300.e-6)**3    ! mks   (300 micron diam  sphere approx)
       real, parameter :: cwmas09 = 1000.*0.523599*(2.*9.e-6)**3 ! mass of 9-micron radius droplet
 
-      real xv,xdn
+      real xv,xdn,cwmasinv
       integer :: ndbz, nmwgt, nnwgt, nwlessthanz
+      double precision :: mixconv, mixconvqv, qsmax,qsmax2,qsmax3,qsmax4
+      logical :: invertccn_local
 
 ! ------------------------------------------------------------------
       
+      IF ( present( invertccn_flag ) ) THEN
+        invertccn_local = invertccn_flag
+      ELSE
+        invertccn_local = .false.
+      ENDIF
+      
+      IF ( present( cwmasin ) ) THEN
+        cwmasinv = 1.0/cwmasin
+      ELSE
+        cwmasinv = 1.0/cwmas09
+      ENDIF
       
       jy = 1
       
@@ -4382,24 +5257,66 @@ END SUBROUTINE nssl_2mom_driver
          ENDIF
 
          g1s = (snu+2.0)/(snu+1.0)
-      
+      qsmax = 0
+      qsmax2 = 0
+      qsmax3 = 0
+      qsmax4 = 0
+!      IF ( .not. present( qcw ) ) THEN
       DO kz = 1,nz
        DO ix = 1,nx ! ixcol
 
+!         qv_mp = spechum/(1.0_kind_phys-spechum)
+!         IF ( convertdry ) THEN
+!         qc_mp = qc/(1.0_kind_phys-spechum)
+        mixconv = 1
+        IF ( present( spechum ) ) THEN ! convert to "dry" mixing ratios
+          an(ix,jy,kz,lv)  = spechum(ix,kz)/(1.0d0 - spechum(ix,kz))
+          mixconv = 1.0d0/(1.0d0 - spechum(ix,kz))
+        ELSE
+          mixconv = 1.0d0
+        ENDIF
+        IF ( present( qv ) ) an(ix,jy,kz,lv) = qv(ix,kz) ! assume qv is "dry" mixing ratio if passed in
+        IF ( present( qcw ) ) an(ix,jy,kz,lc) = qcw(ix,kz)*mixconv
+        IF ( present( qrw ) ) an(ix,jy,kz,lr) = qrw(ix,kz)*mixconv
+        IF ( present( qci ) ) an(ix,jy,kz,li) = qci(ix,kz)*mixconv
+        IF ( present( qsw ) ) THEN
+          an(ix,jy,kz,ls) = qsw(ix,kz)*mixconv
+!          qsmax = Max( qsmax, qsw(ix,kz) )
+!          qsmax2 = Max( qsmax2, an(ix,jy,kz,ls) )
+        ENDIF
+        IF ( present( qhw ) ) an(ix,jy,kz,lh) = qhw(ix,kz)*mixconv
+        IF ( lhl > 1 .and. present( qhl ) ) an(ix,jy,kz,lhl) = qhl(ix,kz)*mixconv
+        IF ( present( ccw ) ) an(ix,jy,kz,lnc) = ccw(ix,kz)*mixconv*dn(ix,kz)
+        IF ( present( crw ) ) an(ix,jy,kz,lnr) = crw(ix,kz)*mixconv*dn(ix,kz)
+        IF ( present( cci ) ) an(ix,jy,kz,lni) = cci(ix,kz)*mixconv*dn(ix,kz)
+        IF ( present( csw ) ) an(ix,jy,kz,lns) = csw(ix,kz)*mixconv*dn(ix,kz)
+        IF ( present( chw ) ) an(ix,jy,kz,lnh) = chw(ix,kz)*mixconv*dn(ix,kz)
+        IF ( lhl > 1 .and. present( chl ) ) an(ix,jy,kz,lnhl) = chl(ix,kz)*mixconv*dn(ix,kz)
+        IF ( lvh > 1 .and. present( vhw ) ) an(ix,jy,kz,lvh) = vhw(ix,kz)*mixconv
+        IF ( lvhl > 1 .and. present( vhl ) ) an(ix,jy,kz,lvhl) = vhl(ix,kz)*mixconv
+        IF ( lccn > 1 .and. present( cccn ) ) an(ix,jy,kz,lccn) = cccn(ix,kz)*mixconv*dn(ix,kz)
+        IF ( lccna > 1 .and. present( cccna ) ) an(ix,jy,kz,lccna) = cccna(ix,kz)*mixconv
+
          dninv = 1./dn(ix,kz)
          
+!        IF ( .not. present( qcw ) ) THEN
    !  Cloud droplets
          
          IF ( lnc > 1 ) THEN
            IF ( an(ix,jy,kz,lnc) <= cxmin .and. an(ix,jy,kz,lc) > qxmin_init(lc) ) THEN
              
-             an(ix,jy,kz,lnc) = Min(qccn, an(ix,jy,kz,lc)/cwmas09 )*dn(ix,kz)
+             an(ix,jy,kz,lnc) = Min(qccn, an(ix,jy,kz,lc)*cwmasinv )*dn(ix,kz)
+             
+             IF ( invertccn_local ) THEN
+               an(ix,jy,kz,lccn) = an(ix,jy,kz,lccn) + an(ix,jy,kz,lnc)
+             ELSE
              
              IF ( lccn > 1 .and. lccna < 1 ) THEN
                 an(ix,jy,kz,lccn) = an(ix,jy,kz,lccn) - an(ix,jy,kz,lnc)
              ENDIF
              IF ( lccna > 1 ) THEN
                 an(ix,jy,kz,lccna) = an(ix,jy,kz,lccna) + an(ix,jy,kz,lnc)
+             ENDIF
              ENDIF
 
            ELSEIF ( an(ix,jy,kz,lc) <= qxmin(lc) .or.  &
@@ -4540,9 +5457,56 @@ END SUBROUTINE nssl_2mom_driver
            
            ENDIF
          ENDIF
- 
+         
+         
+!         ENDIF
+
+!         spechum = qv_mp/(1.0_kind_phys+qv_mp)
+!         IF ( convertdry ) THEN
+!         qc      = qc_mp/(1.0_kind_phys+qv_mp)
+        mixconvqv = 1
+        IF ( present( spechum ) ) THEN ! convert back to "dry+vapor" mixing ratios
+          !an(ix,jy,kz,lv)  = spechum(ix,kz)/(1.0d0 - spechum(ix,kz))
+          mixconvqv = 1.0d0/(1.0d0 + an(ix,jy,kz,lv))
+          spechum(ix,kz) = an(ix,jy,kz,lv)*mixconvqv
+        ELSE
+          mixconvqv = 1.0d0
+        ENDIF
+
+        IF ( present( qv ) )  qv(ix,kz)  = an(ix,jy,kz,lv)
+        IF ( present( qcw ) ) qcw(ix,kz) = an(ix,jy,kz,lc)*mixconvqv
+        IF ( present( qrw ) ) qrw(ix,kz) = an(ix,jy,kz,lr)*mixconvqv
+        IF ( present( qci ) ) qci(ix,kz) = an(ix,jy,kz,li)*mixconvqv
+        IF ( present( qsw ) ) THEN
+          qsw(ix,kz) = an(ix,jy,kz,ls)*mixconvqv
+!          qsmax3 = Max( qsmax3, qsw(ix,kz) )
+!          qsmax4 = Max( qsmax4, an(ix,jy,kz,ls) )
+        ENDIF
+        IF ( present( qhw ) ) qhw(ix,kz) = an(ix,jy,kz,lh)*mixconvqv
+        IF ( lhl > 1 .and. present( qhl ) ) qhl(ix,kz) = an(ix,jy,kz,lhl)*mixconvqv
+        IF ( present( ccw ) ) ccw(ix,kz) = an(ix,jy,kz,lnc)*mixconvqv*dninv
+        IF ( present( crw ) ) crw(ix,kz) = an(ix,jy,kz,lnr)*mixconvqv*dninv
+        IF ( present( cci ) ) cci(ix,kz) = an(ix,jy,kz,lni)*mixconvqv*dninv
+        IF ( present( csw ) ) csw(ix,kz) = an(ix,jy,kz,lns)*mixconvqv*dninv
+        IF ( present( chw ) ) chw(ix,kz) = an(ix,jy,kz,lnh)*mixconvqv*dninv
+        IF ( lhl > 1 .and. present( chl ) ) chl(ix,kz) = an(ix,jy,kz,lnhl)*mixconvqv*dninv
+        IF ( lvh > 1 .and. present( vhw ) ) vhw(ix,kz) = an(ix,jy,kz,lvh)*mixconvqv
+        IF ( lvhl > 1 .and. present( vhl ) ) vhl(ix,kz) = an(ix,jy,kz,lvhl)*mixconvqv
+        IF ( lccn > 1 .and. present( cccn ) ) cccn(ix,kz) = an(ix,jy,kz,lccn)*mixconvqv*dninv
+        IF ( lccna > 1 .and. present( cccna ) ) cccna(ix,kz) = an(ix,jy,kz,lccna)*mixconvqv
+
+
       ENDDO ! ix
       ENDDO ! kz
+!      ELSE
+!        write(0,*) 'calcnfromq: lv = ',lv,lc,lr,li,ls,lh,lvh,lhl,lccn,lccna
+!        write(0,*) 'calcnfromq: nx,ny,nz,na = ',nx,ny,nz,na
+!      
+!      ENDIF
+      
+!      IF ( present( qsw ) ) THEN
+!      write(0,*) 'calcnfromq: qsmax = ',qsmax,qsmax2,qsmax3,qsmax4
+!      ENDIF
       
       RETURN
       
@@ -4750,7 +5714,9 @@ END SUBROUTINE nssl_2mom_driver
    SUBROUTINE calc_eff_radius    &
      &  (nx,ny,nz,na,jyslab & 
      &  ,nor,norz & 
-     &  ,t1,t2,t3  & 
+     &  ,t1,t2,t3,t4  & 
+     &  ,qcw,qci,qsw,qrw &
+     &  ,ccw,cci,csw,crw &
      &  ,an,dn )
 
    implicit none
@@ -4766,13 +5732,14 @@ END SUBROUTINE nssl_2mom_driver
 ! external temporary arrays
 !
 
-      real t1(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz)
-      real t2(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz)
-      real t3(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz)
-      
+      real,optional :: t1(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz)
+      real,optional :: t2(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz)
+      real,optional :: t3(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz)
+      real,optional :: t4(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz)
 
-      real an(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz,na)
+      real, optional :: an(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz,na)
       real dn(-nor+1:nx+nor,-nor+1:ny+nor,-norz+1:nz+norz)
+      real, optional, dimension(nx,nz) :: qcw,qci,qsw,qrw,ccw,cci,csw,crw 
 
       
 
@@ -4808,8 +5775,9 @@ END SUBROUTINE nssl_2mom_driver
       real :: xdia(ngs,lc:lhab,3)
       real :: alpha(ngs,lc:lhab)
       
-      real :: gamc1,gamc2,gami1,gami2,gams1,gams2, factor_c, factor_i, factor_s
-      real :: lam_c, lam_i, lam_s
+      real :: gamc1,gamc2,gami1,gami2,gams1,gams2,gamr1,gamr2
+      real :: factor_c, factor_i, factor_s, factor_r
+      real :: lam_c, lam_i, lam_s, lam_r
       integer :: il
 
 
@@ -4836,10 +5804,20 @@ END SUBROUTINE nssl_2mom_driver
      gami2 = 1. ! Gamma[1 + alphac]
      gams1 = Gamma_sp(2. + snu)
      gams2 = Gamma_sp(1. + snu)
+     gamr1 = Gamma_sp(2. + rnu)
+     gamr2 = Gamma_sp(1. + rnu)
 
      factor_c = (1. + cnu)*Gamma_sp(1. + cnu)/Gamma_sp(5./3. + cnu)
      factor_i = (1. + cinu)*Gamma_sp(1. + cinu)/Gamma_sp(5./3. + cinu)
      factor_s = (1. + snu)*Gamma_sp(1. + snu)/Gamma_sp(5./3. + snu)
+
+     IF ( present(t4) ) THEN
+     IF ( imurain == 3 ) THEN
+       factor_r = (1. + rnu)*Gamma_sp(1. + rnu)/Gamma_sp(5./3. + rnu)
+     ELSE
+       factor_r = ((Pi*(alphar+3.)*(alphar+1.)*(alphar+1.))/6.)**(1./3.)
+     ENDIF
+     ENDIF
 
 !
 !     jy = 1 ! working on a 2d slab
@@ -4852,27 +5830,55 @@ END SUBROUTINE nssl_2mom_driver
        DO ix = 1,nx ! ixcol
 
          rho0(mgs) = dn(ix,jy,kz)
+         IF ( present( an ) ) THEN
          DO il = lc,ls
           qx(mgs,il) = max(an(ix,jy,kz,il), 0.0) 
           cx(mgs,il) = max(an(ix,jy,kz,ln(il)), 0.0) 
          ENDDO
+         ELSE
+          qx(mgs,:) = 0.0
+          cx(mgs,:) = 0.0
+          IF ( present(qcw) ) qx(mgs,lc) = qcw(ix,kz)
+          IF ( present(qci) ) qx(mgs,li) = qci(ix,kz)
+          IF ( present(qsw) ) qx(mgs,ls) = qsw(ix,kz)
+          IF ( present(qrw) ) qx(mgs,lr) = qrw(ix,kz)
+          IF ( present(ccw) ) cx(mgs,lc) = ccw(ix,kz)*rho0(mgs)
+          IF ( present(cci) ) cx(mgs,li) = cci(ix,kz)*rho0(mgs)
+          IF ( present(csw) ) cx(mgs,ls) = csw(ix,kz)*rho0(mgs)
+          IF ( present(crw) ) cx(mgs,lr) = crw(ix,kz)*rho0(mgs)
          
-         IF ( qx(mgs,lc) > qxmin(lc) ) THEN
+         ENDIF
+         
+         IF ( present( t1 ) .and. qx(mgs,lc) > qxmin(lc) .and. cx(mgs,lc) > cxmin ) THEN
 ! Lambda for cloud droplets 
          lam_c = ((cx(mgs,lc)*(Pi/6.)*xdn0(lc)*Gamc1)/(qx(mgs,lc)*rho0(mgs)*Gamc2))**(1./3.)
           t1(ix,jy,kz) = 0.5*factor_c/lam_c
          ENDIF
 
-         IF ( qx(mgs,li) > qxmin(li) ) THEN
+         IF ( present( t2 ) .and. qx(mgs,li) > qxmin(li) .and. cx(mgs,li) > cxmin ) THEN
 ! Lambda for cloud ice 
          lam_i = ((cx(mgs,li)*(Pi/6.)*xdn0(li)*Gami1)/(qx(mgs,li)*rho0(mgs)*Gami2))**(1./3.)
           t2(ix,jy,kz) = 0.5*factor_i/lam_i
          ENDIF
 
-         IF ( qx(mgs,ls) > qxmin(ls) ) THEN
+         IF ( present( t3 ) .and. qx(mgs,ls) > qxmin(ls) .and. cx(mgs,ls) > cxmin  ) THEN
 ! Lambda for snow
          lam_s = ((cx(mgs,ls)*(Pi/6.)*xdn0(ls)*Gams1)/(qx(mgs,ls)*rho0(mgs)*Gams2))**(1./3.)
           t3(ix,jy,kz) = 0.5*factor_s/lam_s
+         ENDIF
+
+         IF ( present( t4 ) .and. present(qrw) .and. present(crw) ) THEN
+         IF ( qx(mgs,lr) > Max(1.e-8,qxmin(lr))  .and. cx(mgs,lr) > cxmin ) THEN
+           IF ( imurain == 1 ) THEN ! gamma-diameter
+! Lambda for rain
+             lam_r = factor_r *((xdn0(lr)*cx(mgs,lr))/(qx(mgs,lr)*rho0(mgs)))**(1./3.)
+             t4(ix,jy,kz) = 0.5*(alphar+3.)/lam_r
+           ELSE ! gamma-volume
+! Lambda for rain
+             lam_r = ((cx(mgs,lr)*(Pi/6.)*xdn0(lr)*Gamr1)/(qx(mgs,lr)*rho0(mgs)*Gamr2))**(1./3.)
+             t4(ix,jy,kz) = 0.5*factor_r/lam_r
+           ENDIF
+         ENDIF
          ENDIF
 
       
@@ -6172,7 +7178,9 @@ END SUBROUTINE nssl_2mom_driver
 !      DO il = lc,lhab
 !      IF ( il .ne. lr ) THEN
         DO mgs = 1,ngscnt
-          vtxbar(mgs,lc,2) = vtxbar(mgs,lc,1)
+          IF ( ildo == 0 .or. ildo == lc ) THEN
+            vtxbar(mgs,lc,2) = vtxbar(mgs,lc,1)
+          ENDIF
         IF ( li .gt. 1 ) THEN
 !          vtxbar(mgs,li,2) = rhovt(mgs)*49420.*1.25447*xdia(mgs,li,1)**(1.415) ! n-wgt (Ferrier 94)
 !          vtxbar(mgs,li,2) = vtxbar(mgs,li,1)
@@ -7563,7 +8571,7 @@ END SUBROUTINE nssl_2mom_driver
              ksq = 0.189 ! Smith (1984, JAMC) for equiv. ice sphere
              IF ( an(ix,jy,kz,lns) .gt. 1.e-7 ) THEN
      !          IF ( .true. ) THEN
-               IF ( qxw > qsmin .or. iusewetsnow >= 2 ) THEN ! old version
+               IF ( qxw > qsmin .or. iusewetsnow >= 2) THEN ! old version
 !                gtmp(ix,kz) = 3.6e18*(snu+2.)*( 0.224*an(ix,jy,kz,ls) + 0.776*qxw)*an(ix,jy,kz,ls)/ &
 !     &              (an(ix,jy,kz,lns)*(snu+1.)*rwdn**2)*db(ix,jy,kz)**2
                 gtmp(ix,kz) = 3.6e18*(snu+2.)*( 0.224*(an(ix,jy,kz,ls)+qxw1) + 0.776*qxw)*(an(ix,jy,kz,ls)+qxw1)/ &
@@ -7895,8 +8903,8 @@ END SUBROUTINE nssl_2mom_driver
           write(0,*) 'dtmpr = ',dtmpr
           write(0,*) 'gtmp = ',gtmp(ix,kz),dtmp(ix,kz)
           IF ( .not. (dbz(ix,jy,kz) .gt. -100 .and. dbz(ix,jy,kz) .lt. 200 ) ) THEN
-            write(0,*) 'dbz out of bounds! STOP!'
-!            STOP
+            write(0,*) 'dbz out of bounds!'
+!           STOP
           ENDIF
          ENDIF
 
@@ -7927,6 +8935,2619 @@ END SUBROUTINE nssl_2mom_driver
       
       RETURN
       END subroutine radardd02
+      
+
+!
+! 08.13.04: version 02b: added missing low-temp roll-off to "saund" (S91)
+!           scheme and changed all roll-offs to cut off at -40 
+!           instead of -43.
+!
+! 11.11.03: version 02a: Fixes to the S91 (saund) subroutine
+!
+! ####################################################################
+!                SUBROUTINE SAUNDX
+! ####################################################################
+      subroutine saundx(isaund,temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,rarfac)
+      
+! ####################################################################
+!
+! 05.04.2004  Fixed another error in the S91 code (in region S8 of 
+!             Helsdon et al.)
+!             Added isaund = -2 option to replace anom. pos. zone with normal 
+!              negative charging
+!             Added isaund = -3 option to use same equations as Wojcik 1994
+!
+!  11/9/2001  Fixed a discrepancy between the crystal diameter used
+!             to calculate charge separation and the diameter used
+!             to find the size range.  Previously used awdia for finding
+!             the size range, but then used fac*awdia for calculating the
+!             charge separation.  (OK if fac = 1, but not for fac=3.67)
+!
+!
+!
+!  Purpose:
+!   Calls the appropriate version of the Saunders et al. scheme
+!
+!  -5 : Saunders etal 1991 (following Helsdon et al. 2001, but use normal charging instead of 'anomalous' zones)
+!  -4 : Saunders etal 1991 (following Helsdon et al. 2001, but remove positive 'anomalous' zone)
+!  -3 : Saunders etal 1991 (following Helsdon et al. 2001)
+!  -2 : Saunders etal 1991 (remove positive 'anomalous' zone)
+!  -1 : Saunders etal 1991 (unmodified 'anomalous' regions) (DO NOT USE)
+!   0 : Saunders 1991 (modified as in Wojcik 1994) 
+!   1 : RR scheme (with extra factor 3.67**qconm)
+!   2 : RR scheme ( no extra factor )
+!   3 : Saunders and Peck Scheme (with extra factor 3.67**qconm) (DO NOT USE)
+!   4 : Saunders and Peck Scheme ( no extra factor )
+!   5 : Saunders and Peck Scheme (with extra factor 3.67**qconm, 0.5*rar) (DO NOT USE)
+!   6 : Saunders and Peck Scheme (with extra factor 3.67**qconm, 0.75*rar) (DO NOT USE)
+!   7 : Saunders and Peck Scheme ( no extra factor, 0.5*rar)
+!   8 : RR scheme ( no extra factor, , 0.5*rar )
+!   9 : Saunders and Peck Scheme ( no extra factor, cutoff at -32.47 as orig eq. from sp98 )
+!  10 : Brooks et al. RARcrit for T > -15 using saund2 (otherwise same as isaund=2) (set rarfac to negative in saund2)
+!  11 : Brooks et al. RARcrit for T > -15 using saund6 (otherwise same as isaund=4)
+!  12 : Brooks et al. RARcrit for T > -15 using saund6 (otherwise same as isaund=9)
+!  13 : Brooks et al. RARcrit for T > -15 using saund8 
+! ####################################################################
+      
+      implicit none
+      integer isaund  ! scheme choice
+      real temcg ! temperature
+      real qcw ! cloud water mixing ratio 
+      real exw ! cloud water collection efficiency
+      real vt ! terminal speed difference between x and cw 
+      real awdia ! crystal diameter
+      real rho0  ! air density
+      real qsign ! sign of charge acquired by rimer (not used by calling prog)
+      real ftrar ! charge factor based on temp and RAR 
+      real qconkq ! factor kq ( or 'B') 
+      real qconm  ! exponent on crystal diameter ('a')
+      real qconn  ! exponent on speed ('b')
+      integer idelq ! charge sign, not used by calling program
+      real awdia1
+      real rarfac
+
+! ####################################################################
+      
+      idelq = 0
+      awdia1 = awdia
+      
+      IF ( isaund .eq. 1 ) THEN
+        awdia1 = 3.67*awdia
+        call saund2(temcg,qcw,exw,vt,awdia1,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,3.67,1.0)
+      ELSEIF ( isaund .eq. 2 ) THEN
+        call saund2(temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,0.0,rarfac)
+      ELSEIF ( isaund .eq. 8 ) THEN
+        call saund2(temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,0.0,0.5)
+      ELSEIF ( isaund .eq. 3 ) THEN
+        awdia1 = 3.67*awdia
+        call saund6(temcg,qcw,exw,vt,awdia1,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,3.67,1.0)
+      ELSEIF ( isaund .eq. 4 ) THEN
+        call saund6(temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,0.0,rarfac)
+      ELSEIF ( isaund .eq. 5 ) THEN
+        awdia1 = 3.67*awdia
+        call saund6(temcg,qcw,exw,vt,awdia1,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,3.67,0.5)
+      ELSEIF ( isaund .eq. 6 ) THEN
+        awdia1 = 3.67*awdia
+        call saund6(temcg,qcw,exw,vt,awdia1,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,3.67,0.75)
+      ELSEIF ( isaund .eq. 7 ) THEN
+        call saund6(temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,0.0,0.5)
+      ELSEIF ( isaund .eq. 9 ) THEN
+        idelq = 1
+        call saund6(temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,0.0,rarfac)
+      ELSEIF ( isaund .eq. 10 ) THEN
+        call saund2(temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,0.0,-rarfac)
+      ELSEIF ( isaund .eq. 11 ) THEN
+        call saund6(temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,0.0,-rarfac)
+      ELSEIF ( isaund .eq. 12 ) THEN
+       idelq = 1
+        call saund6(temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,0.0,-rarfac)
+      ELSEIF ( isaund .eq. 13 ) THEN
+        call saund8(temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,0.0,-rarfac)
+      ELSEIF ( isaund .eq. 0 ) THEN
+        call saund(temcg,qcw,exw,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,0)
+      ELSEIF ( isaund .eq. -1 ) THEN
+        call saund(temcg,qcw,exw,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,1)
+      ELSEIF ( isaund .eq. -2 ) THEN
+        call saund(temcg,qcw,exw,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,2)
+      ELSEIF ( isaund .eq. -3 ) THEN
+        call saund(temcg,qcw,exw,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,3)
+      ELSEIF ( isaund .eq. -4 ) THEN
+        call saund(temcg,qcw,exw,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,4)
+      ELSEIF ( isaund .eq. -5 ) THEN
+        call saund(temcg,qcw,exw,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,5)
+      ELSE
+        write(6,*) 'STOP! unsupported value of isaund = ',isaund
+        STOP
+      ENDIF
+      RETURN
+      END subroutine saundx
+
+! ####################################################################
+!                SUBROUTINE SAUNDY
+! ####################################################################
+      subroutine saundy(isaund,temcg,qcw,rar,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq)
+      
+! ####################################################################
+!
+!  4.1.2002   altered version of saundx to take rar as input instead
+!             of exw.
+!
+!  11/9/2001  Fixed a discrepancy between the crystal diameter used
+!             to calculate charge separation and the diameter used
+!             to find the size range.  Previously used awdia for finding
+!             the size range, but then used fac*awdia for calculating the
+!             charge separation.  (OK if fac = 1, but not for fac=3.67)
+!
+!
+!
+!  Purpose:
+!   Calls the appropriate version of the Saunders et al. scheme
+!
+!   1 : RAR scheme (with extra factor 3.67**qconm)
+!   2 : RAR scheme ( no extra factor )
+!   3 : Saunders and Peck Scheme (with extra factor 3.67**qconm)
+!   4 : Saunders and Peck Scheme ( no extra factor )
+!   5 : Saunders and Peck Scheme (with extra factor 3.67**qconm, 0.5*rar)
+!   6 : Saunders and Peck Scheme (with extra factor 3.67**qconm, 0.75*rar)
+!
+!
+! ####################################################################
+      
+      implicit none
+      integer isaund  ! scheme choice
+      real temcg ! temperature
+      real qcw ! cloud water mixing ratio 
+      real exw ! cloud water collection efficiency
+      real rar
+      real vt ! terminal speed difference between x and cw 
+      real awdia ! crystal diameter
+      real rho0  ! air density
+      real qsign ! sign of charge acquired by rimer (not used by calling prog)
+      real ftrar ! charge factor based on temp and RAR 
+      real qconkq ! factor kq ( or 'B') 
+      real qconm  ! exponent on crystal diameter ('a')
+      real qconn  ! exponent on speed ('b')
+      integer idelq ! charge sign, not used by calling program
+      real awdia1
+
+! ####################################################################
+      
+      awdia1 = awdia
+      
+      IF ( isaund .eq. 4 ) THEN
+        call saund7(temcg,qcw,rar,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,0.0,1.0)
+      ENDIF
+      RETURN
+      END subroutine saundy
+! ####################################################################
+! ####################################################################
+!                SUBROUTINE TAKAX
+! ####################################################################
+      subroutine takax(isaund0,nt,nlc,lookup,temcg,qcw,vt,awdia,     &
+     &                 rho0,ftlwc,exw,qrw,rarfac)
+      
+! ####################################################################
+!
+!  Purpose: For calling different versions of Takahashi charging 
+!           routine
+!  
+!
+! ####################################################################
+      
+      implicit none
+      
+      integer isaund0,isaund,nt,nlc
+      real lookup(0:nt,0:nlc) 
+      real qcw, qrw, lwc
+      real rho0
+      real ftlwc
+      real temcg
+      real vt
+      real awdia,awdia1
+      real exw
+      real rarfac
+      
+      lwc = qcw
+      isaund = Abs(isaund0)
+      IF ( isaund0 .eq. -1 ) lwc = (qcw + qrw)
+      IF ( isaund0 .eq. -2 ) lwc = (qcw + qrw)*rarfac
+       
+!  BEGIN EXECUTABLE CODE
+      IF ( isaund .eq. 1 ) THEN ! taka size/vel. depend.
+        call taka(nt,nlc,lookup,temcg,lwc,vt,awdia,rho0,ftlwc)
+      ELSEIF ( isaund .eq. 2 ) THEN ! saunders size dependence
+        awdia1 = awdia !  3.67*awdia
+        call taka2(nt,nlc,lookup,temcg,lwc,vt,awdia1,rho0,ftlwc)
+      ELSEIF ( isaund .eq. 3 ) THEN ! no size or velocity dependence
+        call taka3(nt,nlc,lookup,temcg,lwc,vt,awdia,rho0,ftlwc)
+      ELSEIF ( isaund .eq. 4 ) THEN ! taka size/vel. depend. w/ D = 3.67/lambda
+        call taka4(nt,nlc,lookup,temcg,lwc,vt,awdia,rho0,ftlwc)
+      ELSEIF ( isaund .eq. 5 ) THEN ! taka size/vel. depend. and using RAR
+        call takarar(nt,nlc,lookup,temcg,lwc,vt,awdia,rho0,ftlwc,exw)
+      ELSE
+        call taka(nt,nlc,lookup,temcg,lwc,vt,awdia,rho0,ftlwc)
+      ENDIF
+
+      END subroutine takax
+
+! ####################################################################
+!                SUBROUTINE SAUND7
+! ####################################################################
+      subroutine saund7(temcg,qcw,rar,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,qfac,rarfac)
+      
+! ####################################################################
+!
+! 4.1.2002  New version that uses the model-calculated RAR (derived
+!           from the collection rate qxacw)
+!
+!cPurpose:
+!   Saunders charging scheme based on rime accretion rate (RAR)
+!   as in Brooks et al. (1997) and Saunders and Peck (1998)
+!
+! 7/27/2000 Try with original Saunders and Peck curve (1998) plus the 
+!           drop-off starting at -23.7
+!
+!
+! 7/24/99  new adjustment to RARcritical curve: make a cubic drop-off
+!          from -23.7 to -40 (and zero charging below -40)
+!
+! 12/8/99 temporary test of putting in a factor of (3.67)**qconm to
+!         approximate using the mass-weighted mean crystal diameter
+!
+! 12/17/99 for positive charging, just use ftrar = 6.74*( rar - rarc )
+!          for all temperatures (took out alternate eq. for T<-34)
+!
+! ####################################################################
+      
+      implicit none
+      real temcg ! temperature
+      real qcw ! cloud water mixing ratio 
+!      real exw ! cloud water collection efficiency
+      real vt ! terminal speed difference between x and cw 
+      real awdia ! crystal diameter
+      real rho0  ! air density
+      real qsign ! sign of charge acquired by rimer (not used by calling prog)
+      real ftrar ! charge factor based on temp and RAR 
+      real qconkq ! factor kq ( or 'B') 
+      real qconm  ! exponent on crystal diameter ('a')
+      real qconn  ! exponent on speed ('b')
+      integer idelq ! charge sign, not used by calling program
+      real qfac
+      real rarfac  ! factor to reduce rar for purposes of charge calculation
+      
+      real rar ! rime accretion rate
+      real rarc ! critical RAR
+      real t,tc
+      parameter (tc = -23.7)
+      real delr,delri
+      parameter (delr=0.5, delri=1.0/delr)
+      real rar0  ! lower limit of RAR where charging goes to zero
+      parameter (rar0 = 0.1)
+      real q0
+      parameter (q0 = 6.48)
+      real tema,tmin
+      parameter (tema = -7.0 , tmin = -43.)
+      
+      real fac
+      
+! ####################################################################
+! Begin Executable code
+! ####################################################################
+
+      IF ( temcg .gt. -30 ) THEN
+        fac = 1.0
+      ELSEIF ( temcg .gt. -40.0 ) THEN
+        fac = 1.0 - ((temcg+30.0)/(40.0 - 30.0))**2
+      ELSE
+        fac = 0.0
+      END IF
+      
+      ftrar = 0.0
+      
+!      rar = exw*qcw*1.0e3*rho0*vt*rarfac
+      t = temcg
+
+      IF (t .gt. tc ) THEN
+      rarc = 1.0 + t*(7.9262e-2 + t*(4.4847e-2 +     &
+     &  t*(7.4754e-3 + t*(5.4686e-4 +     &
+     &  t*(1.6737e-5 + t*1.7613e-7)))))
+!      ELSE ! IF ( t .le. -23.0) THEN
+!       rarc = 3.27
+!      ELSE ! IF ( t .le. -30.0) THEN
+!       rarc = 1.795
+      ELSE ! IF ( t .le. tc) THEN
+       rarc = 3.39608*( 1.0 - Abs( ( (t - tc)/(tc + 40) )**3) )
+      END IF
+
+
+      
+! check for RAR below threshold:
+      IF ( rar .le. rar0 .or. temcg .le. tmin) THEN
+        qsign = 0.0
+        ftrar = 0.0
+        qconkq = 0.0
+        qconn = 1.0
+        qconm = 1.0
+        GOTO 999
+      END IF
+
+! for now, use charging values at -8.0 for warmer temps
+! and values at -23.0 for colder temps (Saunders and Peck, 1998)      
+      IF (temcg .gt. -8.0 ) THEN
+         t = -8.0
+      ELSEIF (temcg .lt. -23.0) THEN
+         t = -23.0
+      END IF
+      
+      qsign = -1.0
+      IF (rar .gt. rarc) qsign = 1.0
+      
+      IF (qsign .gt. 0.5) THEN
+        
+!        IF ( Abs(rar - rarc) .lt. delr) THEN
+!         ftrar = delri*Abs(rar - rarc)*
+!     :           (6.74*(rarc + delr) + 1.36*t + 10.5 )
+!        ELSE
+!         ftrar = 6.74*rar + 1.36*t + 10.5
+!        END IF
+!        ftrar = Max(0.0, ftrar)
+
+!        IF ( Abs(rar - rarc) .lt. delr .and. temcg .gt. tc) THEN
+!         ftrar = Max( 0.0, delri*Abs(rar - rarc)*
+!     :           (6.74*(rarc + delr) + 1.36*t + 10.5 ) )
+!        ELSE
+!         ftrar = Max( 0.0, 6.74*rar + 1.36*t + 10.5 )
+!        END IF
+        
+!        IF ( temcg .gt. -34.0 ) THEN
+          ftrar = 6.74*( rar - rarc )
+!        ELSE
+!          ftrar = Max ( 0.0, 6.74*( rar - 
+!     :     4*( 1.0 - Abs( ( (-34.0 + 25.0 )/(-25.0 - tmin) )**2) ) ) )
+!        END IF
+        
+        if ( awdia*1.e6.lt.155. ) then
+          qconkq = 4.9e13
+          qconm  = 3.76
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.ge.155. .and. awdia*1.e6.le.452. ) then
+          qconkq = 4.0e6
+          qconm  = 1.9
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.gt.452. ) then
+          qconkq = 52.8
+          qconm  = 0.44
+          qconn  = 2.5
+        end if
+        
+        IF ( qfac .gt. 1.0 ) THEN
+         ftrar = fac*ftrar*qfac**qconm
+        ELSE
+         ftrar = fac*ftrar
+        ENDIF
+
+      ELSEIF (qsign .lt. -0.5) THEN
+
+!        IF ( Abs(rar - rarc) .lt. delr) THEN
+!         ftrar = delri*Abs(rar - rarc)*
+!     :           (3.02 - 10.59*(rarc-delr) + 2.95*(rarc-delr)**2 )
+!        ELSEIF (rar .lt. 0.4) THEN
+!         ftrar = ((rar-0.1)/0.3)*(3.02 - 10.59*(0.4) + 2.95*(0.4)**2)
+!        ELSE
+!         ftrar = 3.02 - 10.59*rar + 2.95*rar**2
+!        END IF
+
+        ftrar = Min(1.0, 0.6*Abs(rarc - rar0) )*(6.5)*(-1.0 +      &
+     &    4.0/(rarc - rar0)**2 * (rar - (rarc + rar0)/2.0 )**2  )
+        ftrar = Min( 0.0, ftrar )
+        
+        if ( awdia*1.e6.lt.253. ) then
+          qconkq = 5.24e8
+          qconm  = 2.54
+          qconn  = 2.8
+        end if
+        if ( awdia*1.e6.gt.253. ) then
+          qconkq = 24.0
+          qconm  = 0.50
+          qconn  = 2.8
+        end if
+
+        IF ( qfac .gt. 1.0 ) THEN
+         ftrar = fac*ftrar*qfac**qconm
+        ELSE
+         ftrar = fac*ftrar
+        ENDIF
+        
+      END IF
+      
+      
+ 999  CONTINUE      
+      RETURN
+      END subroutine saund7
+
+
+! ####################################################################
+!                SUBROUTINE TAKA2
+! ####################################################################
+      subroutine TAKA2(nt,nlc,lookup,temcg,qcw,vt,awdia,rho0,ftlwc)
+      
+! ####################################################################
+!
+!  Purpose:
+!           Noninductive charging per Takahashi 1978 lab results.  
+!           Using lookup table from Wojcik (1994).  For temperatures
+!           lower than -30 C, the values at -30 C are used.
+!
+!  7/31/99 Now limit low-temp charging rates by a parabolic function
+!          with a value of zero at -30 C and goes to zero at -43 C.
+!         
+!  8/10/99 Fixed bug in the interpolation: was accidentally 
+!          _extrapolating_.   Oops.
+!
+!  10/26/99  Test using a Saunders et al. size dependence on the crystal size
+!
+! ####################################################################
+      
+      implicit none
+      
+      integer nt,nlc
+      real lookup(0:nt,0:nlc) 
+      real qlwc
+      real qcw
+      real rho0
+      real ftlwc
+      real temt,temcg
+      integer item,ilwc
+      real fact,facl
+      real a1,a2,a3
+      real alf
+      real vt
+      real awdia
+      real d0
+      parameter(d0 = 100.0e-6)
+      real v0 
+      parameter(v0 = 8.0)
+      real fac
+      real qconkq, qconm, qconn
+      
+!  BEGIN EXECUTABLE CODE
+
+      IF ( temcg .gt. -30 ) THEN
+        fac = 1.0
+      ELSEIF ( temcg .gt. -40.0 ) THEN
+        fac = 1.0 - ((temcg+30.0)/(40.0 - 30.0))**2
+      ELSE
+        fac = 0.0
+      END IF
+      
+      
+      temt = Max (temcg, -30.0)
+      item = Int(-temt) + 1
+      qlwc = qcw*(1.e3)*rho0
+      
+      qlwc = Min ( qlwc, 30.0)
+      ilwc = 0
+      ftlwc = 0.0
+      
+      IF (qlwc .ge. 10.0) THEN
+        ilwc = Int( qlwc/10.0 + 1.0e-5) + 1 + 27
+        facl = (qlwc - lookup(0,ilwc) )*0.1
+      ELSEIF (qlwc .ge. 1.0) THEN
+        ilwc = Int( qlwc + 1.0e-5) + 1 + 18
+        facl = (qlwc - lookup(0,ilwc) )*1.0
+      ELSEIF (qlwc .ge. 0.1) THEN
+        ilwc = Int( qlwc*10.0 + 1.0e-5 ) + 1 + 9
+        facl = (qlwc - lookup(0,ilwc) )*10.0
+      ELSEIF (qlwc .ge. 0.01) THEN
+        ilwc = Int ( qlwc*100.0 + 1.0e-5) + 1
+        facl = (qlwc - lookup(0,ilwc) )*100.0
+      ELSE 
+         ilwc = 0
+         ftlwc = 0.0
+      END IF
+
+      IF (ilwc .gt. 0) THEN
+        fact = -temt - Float(item) + 1.0
+!        a1 = (1.0-fact)*lookup(item,ilwc) + fact*lookup(item+1,ilwc)
+!        a2 = (1.0-fact)*lookup(item,ilwc+1) + fact*lookup(item+1,ilwc+1)
+        a1 = (1.0-fact)*lookup(item,ilwc) +      &
+     &          fact*lookup(Min(nt,item+1),ilwc)
+        a2 = (1.0-fact)*lookup(item,ilwc+1) +      &
+     &          fact*lookup(Min(nt,item+1),ilwc+1)
+        ftlwc = fac*(a1 + facl*(a2-a1))
+        IF ( ftlwc .gt. 0.0 ) THEN
+        
+        if ( awdia*1.e6.lt.155. ) then
+          qconkq = 4.9e13
+          qconm  = 3.76
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.ge.155. .and. awdia*1.e6.le.452. ) then
+          qconkq = 4.0e6
+          qconm  = 1.9
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.gt.452. ) then
+          qconkq = 52.8
+          qconm  = 0.44
+          qconn  = 2.5
+        end if
+        
+        ELSEIF ( ftlwc .lt. 0.0 ) THEN
+        
+        if ( awdia*1.e6.lt.253. ) then
+          qconkq = 5.24e8
+          qconm  = 2.54
+          qconn  = 2.8
+        end if
+        if ( awdia*1.e6.gt.253. ) then
+          qconkq = 24.0
+          qconm  = 0.50
+          qconn  = 2.8
+        end if
+        
+        ENDIF
+        
+!        alf = Min(5.0*(awdia/d0)**2*Abs(vt)/v0,10.0)
+!        alf = qconkq*(3.67*awdia)**qconm*(0.333*Abs(vt))**qconn ! 11/9/01 erm
+!        alf = qconkq*(awdia)**qconm*(Abs(vt))**qconn        ! 11/9/01 erm
+! Need to figure out what to do with qconkq, if anything...
+        alf = (awdia/d0)**qconm*(Abs(vt)/v0)**qconn        ! 12/9/04 erm
+        ftlwc = 1.0e-15*alf*ftlwc
+      END IF
+      
+      RETURN
+      END subroutine TAKA2
+
+! ####################################################################
+!                SUBROUTINE TAKARAR
+! ####################################################################
+      subroutine TAKARAR(nt,nlc,lookup,temcg,qcw,vt,awdia,rho0,ftlwc,     &
+     &                   exw)
+      
+! ####################################################################
+!
+!  Purpose:
+!           Noninductive charging per Takahashi 1978 lab results.  
+!           Using lookup table from Wojcik (1994).  For temperatures
+!           lower than -30 C, the values at -30 C are used.
+!
+!  7/31/99 Now limit low-temp charging rates by a parabolic function
+!          with a value of zero at -30 C and goes to zero at -43 C.
+!         
+!  8/10/99 Fixed bug in the interpolation: was accidentally 
+!          _extrapolating_.   Oops.
+!
+! ####################################################################
+      
+      implicit none
+      
+      integer nt,nlc
+      real lookup(0:nt,0:nlc) 
+      real qlwc
+      real qcw
+      real rho0
+      real ftlwc
+      real exw
+      real temt,temcg
+      integer item,ilwc
+      real fact,facl
+      real a1,a2,a3
+      real alf
+      real vt
+      real awdia
+      real d0
+      parameter(d0 = 100.0e-6)
+      real v0 
+      parameter(v0 = 8.0)
+      real fac
+      real rar
+      
+!  BEGIN EXECUTABLE CODE
+
+      IF ( temcg .gt. -30 ) THEN
+        fac = 1.0
+      ELSEIF ( temcg .gt. -40.0 ) THEN
+        fac = 1.0 - ((temcg+30.0)/(40.0 - 30.0))**2
+      ELSE
+        fac = 0.0
+      END IF
+!
+! here, qlwc is scaled by vt/9.0, where 9.0m/s is the riming rod speed in Takahashi (1978)
+!
+      qlwc = exw*qcw*1.0e3*rho0*vt/9.0
+      
+      temt = Max (temcg, -30.0)
+      item = Int(-temt) + 1
+!      qlwc = qcw*(1.e3)*rho0
+      
+      qlwc = Min ( qlwc, 30.0)
+      ilwc = 0
+      ftlwc = 0.0
+      
+      IF (qlwc .ge. 10.0) THEN
+        ilwc = Int( qlwc/10.0 + 1.0e-5) + 1 + 27
+        facl = (qlwc - lookup(0,ilwc) )*0.1
+      ELSEIF (qlwc .ge. 1.0) THEN
+        ilwc = Int( qlwc + 1.0e-5) + 1 + 18
+        facl = (qlwc - lookup(0,ilwc) )*1.0
+      ELSEIF (qlwc .ge. 0.1) THEN
+        ilwc = Int( qlwc*10.0 + 1.0e-5 ) + 1 + 9
+        facl = (qlwc - lookup(0,ilwc) )*10.0
+      ELSEIF (qlwc .ge. 0.01) THEN
+        ilwc = Int ( qlwc*100.0 + 1.0e-5) + 1
+        facl = (qlwc - lookup(0,ilwc) )*100.0
+      ELSE 
+         ilwc = 0
+         ftlwc = 0.0
+      END IF
+      
+      IF ( ilwc .eq. nlc ) THEN
+       write(0,*) 'Warning: ilwc = nlc! setting to nlc-1'
+       ilwc = nlc - 1
+      ENDIF 
+      IF ( item .gt. nt ) THEN
+       write(0,*) 'Warning: item > nt! setting to nt'
+       item = nt
+      ENDIF 
+      IF ( ilwc .lt. 0 ) THEN
+       write(0,*) 'Warning: ilwc < 0! setting to 0'
+       ilwc = 0
+      ENDIF 
+      IF ( item .lt. 0 ) THEN
+       write(0,*) 'Warning: item < 0! setting to 0'
+       item = 0
+      ENDIF 
+
+      IF (ilwc .gt. 0) THEN
+        fact = -temt - Float(item) + 1.0
+        a1 = (1.0-fact)*lookup(item,ilwc) +      &
+     &          fact*lookup(Min(nt,item+1),ilwc)
+        a2 = (1.0-fact)*lookup(item,ilwc+1) +      &
+     &          fact*lookup(Min(nt,item+1),ilwc+1)
+        ftlwc = fac*(a1 + facl*(a2-a1))
+        
+        alf = Min(5.0*(awdia/d0)**2*Abs(vt)/v0,10.0)
+        ftlwc = 1.0e-15*alf*ftlwc
+      END IF
+      
+      RETURN
+      END subroutine takarar
+! ####################################################################
+!                SUBROUTINE TAKA
+! ####################################################################
+      subroutine TAKA(nt,nlc,lookup,temcg,qcw,vt,awdia,rho0,ftlwc)
+      
+! ####################################################################
+!
+!  Purpose:
+!           Noninductive charging per Takahashi 1978 lab results.  
+!           Using lookup table from Wojcik (1994).  For temperatures
+!           lower than -30 C, the values at -30 C are used.
+!
+!  7/31/99 Now limit low-temp charging rates by a parabolic function
+!          with a value of zero at -30 C and goes to zero at -43 C.
+!         
+!  8/10/99 Fixed bug in the interpolation: was accidentally 
+!          _extrapolating_.   Oops.
+!
+! ####################################################################
+      
+      implicit none
+      
+      integer nt,nlc
+      real lookup(0:nt,0:nlc) 
+      real qlwc
+      real qcw
+      real rho0
+      real ftlwc
+      real temt,temcg
+      integer item,ilwc
+      real fact,facl
+      real a1,a2,a3
+      real alf
+      real vt
+      real awdia
+      real d0
+      parameter(d0 = 100.0e-6)
+      real v0 
+      parameter(v0 = 8.0)
+      real fac
+      
+!  BEGIN EXECUTABLE CODE
+
+      IF ( temcg .gt. -30 ) THEN
+        fac = 1.0
+      ELSEIF ( temcg .gt. -40.0 ) THEN
+        fac = 1.0 - ((temcg+30.0)/(40.0 - 30.0))**2
+      ELSE
+        fac = 0.0
+      END IF
+      
+      
+      temt = Max (temcg, -30.0)
+      item = Int(-temt) + 1
+      qlwc = qcw*(1.e3)*rho0
+      
+      qlwc = Min ( qlwc, 30.0)
+      ilwc = 0
+      ftlwc = 0.0
+      
+      IF (qlwc .ge. 10.0) THEN
+        ilwc = Int( qlwc/10.0 + 1.0e-5) + 1 + 27
+        facl = (qlwc - lookup(0,ilwc) )*0.1
+      ELSEIF (qlwc .ge. 1.0) THEN
+        ilwc = Int( qlwc + 1.0e-5) + 1 + 18
+        facl = (qlwc - lookup(0,ilwc) )*1.0
+      ELSEIF (qlwc .ge. 0.1) THEN
+        ilwc = Int( qlwc*10.0 + 1.0e-5 ) + 1 + 9
+        facl = (qlwc - lookup(0,ilwc) )*10.0
+      ELSEIF (qlwc .ge. 0.01) THEN
+        ilwc = Int ( qlwc*100.0 + 1.0e-5) + 1
+        facl = (qlwc - lookup(0,ilwc) )*100.0
+      ELSE 
+         ilwc = 0
+         ftlwc = 0.0
+      END IF
+      
+      IF ( ilwc .eq. nlc ) THEN
+       write(0,*) 'Warning: ilwc = nlc! setting to nlc-1'
+       ilwc = nlc - 1
+      ENDIF 
+      IF ( item .gt. nt ) THEN
+       write(0,*) 'Warning: item > nt! setting to nt'
+       item = nt
+      ENDIF 
+      IF ( ilwc .lt. 0 ) THEN
+       write(0,*) 'Warning: ilwc < 0! setting to 0'
+       ilwc = 0
+      ENDIF 
+      IF ( item .lt. 0 ) THEN
+       write(0,*) 'Warning: item < 0! setting to 0'
+       item = 0
+      ENDIF 
+
+      IF (ilwc .gt. 0) THEN
+        fact = -temt - Float(item) + 1.0
+        a1 = (1.0-fact)*lookup(item,ilwc) +      &
+     &          fact*lookup(Min(nt,item+1),ilwc)
+        a2 = (1.0-fact)*lookup(item,ilwc+1) +      &
+     &          fact*lookup(Min(nt,item+1),ilwc+1)
+        ftlwc = fac*(a1 + facl*(a2-a1))
+        
+        alf = Min(5.0*(awdia/d0)**2*Abs(vt)/v0,10.0)
+        ftlwc = 1.0e-15*alf*ftlwc
+      END IF
+      
+      RETURN
+      END subroutine TAKA
+
+! ####################################################################
+!                SUBROUTINE TAKA3
+! ####################################################################
+      subroutine TAKA3(nt,nlc,lookup,temcg,qcw,vt,awdia,rho0,ftlwc)
+      
+! ####################################################################
+!
+!  Purpose:
+!           Noninductive charging per Takahashi 1978 lab results.  
+!           Using lookup table from Wojcik (1994).  For temperatures
+!           lower than -30 C, the values at -30 C are used.
+!
+!  7/31/99 Now limit low-temp charging rates by a parabolic function
+!          with a value of zero at -30 C and goes to zero at -43 C.
+!         
+!  8/10/99 Fixed bug in the interpolation: was accidentally 
+!          _extrapolating_.   Oops.
+!
+! ####################################################################
+      
+      implicit none
+      
+      integer nt,nlc
+      real lookup(0:nt,0:nlc) 
+      real qlwc
+      real qcw
+      real rho0
+      real ftlwc
+      real temt,temcg
+      integer item,ilwc
+      real fact,facl
+      real a1,a2,a3
+      real alf
+      real vt
+      real awdia
+      real d0
+      parameter(d0 = 100.0e-6)
+      real v0 
+      parameter(v0 = 8.0)
+      real fac
+      
+!  BEGIN EXECUTABLE CODE
+
+      IF ( temcg .gt. -30 ) THEN
+        fac = 1.0
+      ELSEIF ( temcg .gt. -40.0 ) THEN
+        fac = 1.0 - ((temcg+30.0)/(40.0 - 30.0))**2
+      ELSE
+        fac = 0.0
+      END IF
+      
+      
+      temt = Max (temcg, -30.0)
+      item = Int(-temt) + 1
+      qlwc = qcw*(1.e3)*rho0
+      
+      qlwc = Min ( qlwc, 30.0)
+      ilwc = 0
+      ftlwc = 0.0
+      
+      IF (qlwc .ge. 10.0) THEN
+        ilwc = Int( qlwc/10.0 + 1.0e-5) + 1 + 27
+        facl = (qlwc - lookup(0,ilwc) )*0.1
+      ELSEIF (qlwc .ge. 1.0) THEN
+        ilwc = Int( qlwc + 1.0e-5) + 1 + 18
+        facl = (qlwc - lookup(0,ilwc) )*1.0
+      ELSEIF (qlwc .ge. 0.1) THEN
+        ilwc = Int( qlwc*10.0 + 1.0e-5 ) + 1 + 9
+        facl = (qlwc - lookup(0,ilwc) )*10.0
+      ELSEIF (qlwc .ge. 0.01) THEN
+        ilwc = Int ( qlwc*100.0 + 1.0e-5) + 1
+        facl = (qlwc - lookup(0,ilwc) )*100.0
+      ELSE 
+         ilwc = 0
+         ftlwc = 0.0
+      END IF
+
+      IF (ilwc .gt. 0) THEN
+        fact = -temt - Float(item) + 1.0
+!        a1 = (1.0-fact)*lookup(item,ilwc) + fact*lookup(item+1,ilwc)
+!        a2 = (1.0-fact)*lookup(item,ilwc+1) + fact*lookup(item+1,ilwc+1)
+        a1 = (1.0-fact)*lookup(item,ilwc) +      &
+     &          fact*lookup(Min(nt,item+1),ilwc)
+        a2 = (1.0-fact)*lookup(item,ilwc+1) +      &
+     &          fact*lookup(Min(nt,item+1),ilwc+1)
+        ftlwc = fac*(a1 + facl*(a2-a1))
+        
+!        alf = Min(5.0*(awdia/d0)**2*Abs(vt)/v0,10.0)
+        ftlwc = 1.0e-15*ftlwc
+      END IF
+      
+      RETURN
+      END subroutine TAKA3
+
+! ####################################################################
+!                SUBROUTINE TAKA4
+! ####################################################################
+      subroutine TAKA4(nt,nlc,lookup,temcg,qcw,vt,awdia,rho0,ftlwc)
+      
+! ####################################################################
+!
+!  Purpose:
+!           Noninductive charging per Takahashi 1978 lab results.  
+!           Using lookup table from Wojcik (1994).  For temperatures
+!           lower than -30 C, the values at -30 C are used.
+!
+!  7/31/99 Now limit low-temp charging rates by a parabolic function
+!          with a value of zero at -30 C and goes to zero at -43 C.
+!         
+!  8/10/99 Fixed bug in the interpolation: was accidentally 
+!          _extrapolating_.   Oops.
+!
+! ####################################################################
+      
+      implicit none
+      
+      integer nt,nlc
+      real lookup(0:nt,0:nlc) 
+      real qlwc
+      real qcw
+      real rho0
+      real ftlwc
+      real temt,temcg
+      integer item,ilwc
+      real fact,facl
+      real a1,a2,a3
+      real alf
+      real vt
+      real awdia
+      real d0
+      parameter(d0 = 100.0e-6)
+      real v0 
+      parameter(v0 = 8.0)
+      real fac
+      
+!  BEGIN EXECUTABLE CODE
+
+      IF ( temcg .gt. -30 ) THEN
+        fac = 1.0
+      ELSEIF ( temcg .gt. -40.0 ) THEN
+        fac = 1.0 - ((temcg+30.0)/(40.0 - 30.0))**2
+      ELSE
+        fac = 0.0
+      END IF
+      
+      
+      temt = Max (temcg, -30.0)
+      item = Int(-temt) + 1
+      qlwc = qcw*(1.e3)*rho0
+      
+      qlwc = Min ( qlwc, 30.0)
+      ilwc = 0
+      ftlwc = 0.0
+      
+      IF (qlwc .ge. 10.0) THEN
+        ilwc = Int( qlwc/10.0 + 1.0e-5) + 1 + 27
+        facl = (qlwc - lookup(0,ilwc) )*0.1
+      ELSEIF (qlwc .ge. 1.0) THEN
+        ilwc = Int( qlwc + 1.0e-5) + 1 + 18
+        facl = (qlwc - lookup(0,ilwc) )*1.0
+      ELSEIF (qlwc .ge. 0.1) THEN
+        ilwc = Int( qlwc*10.0 + 1.0e-5 ) + 1 + 9
+        facl = (qlwc - lookup(0,ilwc) )*10.0
+      ELSEIF (qlwc .ge. 0.01) THEN
+        ilwc = Int ( qlwc*100.0 + 1.0e-5) + 1
+        facl = (qlwc - lookup(0,ilwc) )*100.0
+      ELSE 
+         ilwc = 0
+         ftlwc = 0.0
+      END IF
+
+      IF (ilwc .gt. 0) THEN
+        fact = -temt - Float(item) + 1.0
+!        a1 = (1.0-fact)*lookup(item,ilwc) + fact*lookup(item+1,ilwc)
+!        a2 = (1.0-fact)*lookup(item,ilwc+1) + fact*lookup(item+1,ilwc+1)
+        a1 = (1.0-fact)*lookup(item,ilwc) +      &
+     &          fact*lookup(Min(nt,item+1),ilwc)
+        a2 = (1.0-fact)*lookup(item,ilwc+1) +      &
+     &          fact*lookup(Min(nt,item+1),ilwc+1)
+        ftlwc = fac*(a1 + facl*(a2-a1))
+        
+        alf = Min(5.0*(3.67*awdia/d0)**2*Abs(vt)/v0,10.0)
+        ftlwc = 1.0e-15*alf*ftlwc
+      END IF
+      
+      RETURN
+      END subroutine TAKA4
+
+! ####################################################################
+!                SUBROUTINE SAUND6
+! ####################################################################
+      subroutine saund6(temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,qfac,rarfac)
+      
+! ####################################################################
+!
+!  Purpose:
+!   Saunders charging scheme based on rime accretion rate (RAR)
+!   as in Brooks et al. (1997) and Saunders and Peck (1998)
+!
+! 10/12/2003:  Add line 'rarc = Max(rarc, 0.0)' to prevent negative
+!              values of rarc for -43 < T < -40
+!
+!
+! 7/27/2000 Try with original Saunders and Peck curve (1998) plus the 
+!           drop-off starting at -23.7
+!
+!
+! 7/24/99  new adjustment to RARcritical curve: make a cubic drop-off
+!          from -23.7 to -40 (and zero charging below -40) 
+!         (correction, 10/12/2003: charging was set zero below -43, not -40)
+!
+! 12/8/99 temporary test of putting in a factor of (3.67)**qconm to
+!         approximate using the mass-weighted mean crystal diameter
+!
+! 12/17/99 for positive charging, just use ftrar = 6.74*( rar - rarc )
+!          for all temperatures (took out alternate eq. for T<-34)
+!
+! ####################################################################
+      
+      implicit none
+      real temcg ! temperature
+      real qcw ! cloud water mixing ratio 
+      real exw ! cloud water collection efficiency
+      real vt ! terminal speed difference between x and cw 
+      real awdia ! crystal diameter
+      real rho0  ! air density
+      real qsign ! sign of charge acquired by rimer (not used by calling prog)
+      real ftrar ! charge factor based on temp and RAR 
+      real qconkq ! factor kq ( or 'B') 
+      real qconm  ! exponent on crystal diameter ('a')
+      real qconn  ! exponent on speed ('b')
+      integer idelq ! charge sign, not used by calling program
+      real qfac
+      real rarfac  ! factor to reduce rar for purposes of charge calculation
+      
+      real rar ! rime accretion rate
+      real rarc ! critical RAR
+      real t,tc
+      parameter (tc = -23.7)
+      real delr,delri
+      parameter (delr=0.5, delri=1.0/delr)
+      real rar0  ! lower limit of RAR where charging goes to zero
+      parameter (rar0 = 0.1)
+      real q0
+      parameter (q0 = 6.48)
+      real tema,tmin
+      parameter (tema = -7.0 , tmin = -37.0)
+      integer ibs
+      
+      real fac
+      
+! ####################################################################
+! Begin Executable code
+! ####################################################################
+
+      IF ( temcg .gt. -30. ) THEN
+        fac = 1.0
+!      ELSEIF ( temcg .gt. -40.0 ) THEN
+!        fac = 1.0 - ((temcg+30.0)/(40.0 - 30.0))**2
+      ELSEIF ( temcg .gt. tmin ) THEN
+        fac = 1.0 - ((temcg+30.0)/(-tmin - 30.0))**2
+      ELSE
+        fac = 0.0
+      END IF
+
+      IF ( rarfac .gt. 0.0 ) THEN
+        ibs = 0
+      ELSE
+        ibs = 1
+      ENDIF
+      
+      ftrar = 0.0
+      
+      rar = exw*qcw*1.0e3*rho0*vt*Abs(rarfac)
+      t = temcg
+
+      IF ( ibs .eq. 1 .and. t .gt. -15.0 ) THEN
+       rarc = Max( 0.0, Min( 3.29, -1.47 - 0.2*t ) )
+      ELSE
+        IF (t .gt. tc ) THEN
+        rarc = 1.0 + t*(7.9262e-2 + t*(4.4847e-2 +     &
+     &    t*(7.4754e-3 + t*(5.4686e-4 +     &
+     &    t*(1.6737e-5 + t*1.7613e-7)))))
+!      ELSE ! IF ( t .le. -23.0) THEN
+!       rarc = 3.27
+!      ELSE ! IF ( t .le. -30.0) THEN
+!       rarc = 1.795
+        ELSE ! IF ( t .le. tc) THEN
+         rarc = 3.39608*( 1.0 - Abs( ( (t - tc)/(tc - tmin) )**3) )
+        ENDIF
+      ENDIF
+      
+       rarc = Max(rarc, rar0)  ! ERM 10/12/2003; changed 0 to rar0 5/8/2004
+
+!
+! New option (2/9/2005) to use original SP98 equation and cut off charging where
+!  it hits zero
+!
+      IF ( idelq .eq. 1 ) THEN  
+      
+        IF ( t .le. tc) THEN
+        rarc = Max(0.0, 1.0 + t*(7.9262e-2 + t*(4.4847e-2 +     &
+     &    t*(7.4754e-3 + t*(5.4686e-4 +     &
+     &    t*(1.6737e-5 + t*1.7613e-7))))) )
+        END IF
+        
+        IF ( t .lt. -33. ) rarc = rar0
+      
+        IF ( temcg .gt. -25.0 ) THEN
+          fac = 1.0
+        ELSEIF ( temcg .gt. -32.47 ) THEN
+          fac = 1.0 + ((temcg+25.0)/(32.47 - 25.00))
+        ELSE
+          fac = 0.0
+          qsign = 0.0
+          ftrar = 0.0
+          qconkq = 0.0
+          qconn = 1.0
+          qconm = 1.0
+          GOTO 999
+        END IF
+      
+      ENDIF
+
+      
+! check for RAR below threshold:
+      IF ( rar .le. rar0 .or. temcg .le. tmin) THEN
+        qsign = 0.0
+        ftrar = 0.0
+        qconkq = 0.0
+        qconn = 1.0
+        qconm = 1.0
+        GOTO 999
+      END IF
+
+! for now, use charging values at -8.0 for warmer temps
+! and values at -23.0 for colder temps (Saunders and Peck, 1998)      
+      IF (temcg .gt. -8.0 ) THEN
+         t = -8.0
+      ELSEIF (temcg .lt. -23.0) THEN
+         t = -23.0
+      END IF
+      
+      qsign = -1.0
+      IF (rar .gt. rarc) qsign = 1.0
+      
+      IF (qsign .gt. 0.5) THEN
+        
+          ftrar = 6.74*( rar - rarc )
+        
+        if ( awdia*1.e6.lt.155. ) then
+          qconkq = 4.9e13
+          qconm  = 3.76
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.ge.155. .and. awdia*1.e6.le.452. ) then
+          qconkq = 4.0e6
+          qconm  = 1.9
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.gt.452. ) then
+          qconkq = 52.8
+          qconm  = 0.44
+          qconn  = 2.5
+        end if
+        
+        IF ( qfac .gt. 1.0 ) THEN
+         ftrar = fac*ftrar*qfac**qconm
+        ELSE
+         ftrar = fac*ftrar
+        ENDIF
+
+      ELSEIF (qsign .lt. -0.5) THEN
+
+
+        ftrar = Min(1.0, 0.6*Abs(rarc - rar0) )*(6.5)*(-1.0 +      &
+     &    4.0/(rarc - rar0)**2 * (rar - (rarc + rar0)/2.0 )**2  )
+        ftrar = Min( 0.0, ftrar )
+        
+        if ( awdia*1.e6.lt.253. ) then
+          qconkq = 5.24e8
+          qconm  = 2.54
+          qconn  = 2.8
+        end if
+        if ( awdia*1.e6.gt.253. ) then
+          qconkq = 24.0
+          qconm  = 0.50
+          qconn  = 2.8
+        end if
+
+        IF ( qfac .gt. 1.0 ) THEN
+         ftrar = fac*ftrar*qfac**qconm
+        ELSE
+         ftrar = fac*ftrar
+        ENDIF
+        
+      END IF
+      
+      
+ 999  CONTINUE      
+      RETURN
+      END subroutine saund6
+
+
+! ####################################################################
+!                SUBROUTINE SAUND8
+! ####################################################################
+      subroutine saund8(temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,qfac,rarfac)
+      
+! ####################################################################
+!
+!  Purpose:
+!   Saunders charging scheme based on rime accretion rate (RAR)
+!   as in Brooks et al. (1997) and Saunders and Peck (1998)
+!
+! 10/12/2003:  Add line 'rarc = Max(rarc, 0.0)' to prevent negative
+!              values of rarc for -43 < T < -40
+!
+!
+! 7/27/2000 Try with original Saunders and Peck curve (1998) plus the 
+!           drop-off starting at -23.7
+!
+!
+! 7/24/99  new adjustment to RARcritical curve: make a cubic drop-off
+!          from -23.7 to -40 (and zero charging below -40) 
+!         (correction, 10/12/2003: charging was set zero below -43, not -40)
+!
+! 12/8/99 temporary test of putting in a factor of (3.67)**qconm to
+!         approximate using the mass-weighted mean crystal diameter
+!
+! 12/17/99 for positive charging, just use ftrar = 6.74*( rar - rarc )
+!          for all temperatures (took out alternate eq. for T<-34)
+!
+! ####################################################################
+      
+      implicit none
+      real temcg ! temperature
+      real qcw ! cloud water mixing ratio 
+      real exw ! cloud water collection efficiency
+      real vt ! terminal speed difference between x and cw 
+      real awdia ! crystal diameter
+      real rho0  ! air density
+      real qsign ! sign of charge acquired by rimer (not used by calling prog)
+      real ftrar ! charge factor based on temp and RAR 
+      real qconkq ! factor kq ( or 'B') 
+      real qconm  ! exponent on crystal diameter ('a')
+      real qconn  ! exponent on speed ('b')
+      integer idelq ! charge sign, not used by calling program
+      real qfac
+      real rarfac  ! factor to reduce rar for purposes of charge calculation
+      
+      real rar ! rime accretion rate
+      real rarc ! critical RAR
+      real t,tc
+!      parameter (tc = -23.7)
+      parameter (tc = -24.5)
+      real delr,delri
+      parameter (delr=0.5, delri=1.0/delr)
+      real rar0  ! lower limit of RAR where charging goes to zero
+      parameter (rar0 = 0.1)
+      real q0
+      parameter (q0 = 6.48)
+      real tema,tmin,tcc
+      parameter (tema = -7.0 , tmin = -37.0)
+      real :: tmincutoff
+      integer ibs
+      real, parameter :: pi = 3.141592654
+      
+      real fac
+      
+! ####################################################################
+! Begin Executable code
+! ####################################################################
+
+      tcc = -30.
+      tmincutoff = -37.
+      IF ( temcg .gt. tcc ) THEN
+        fac = 1.0
+!      ELSEIF ( temcg .gt. -40.0 ) THEN
+!        fac = 1.0 - ((temcg+30.0)/(40.0 - 30.0))**2
+      ELSEIF ( temcg .gt. tmincutoff ) THEN
+!        fac = 1.0 - ((temcg+30.0)/(-tmin - 30.0))**2
+! Cosine funtion roll-off
+         fac = 0.5 *(1. + Cos(pi *(((temcg - tcc)/(-tmincutoff + tcc)))))
+      ELSE
+        fac = 0.0
+      END IF
+
+      IF ( rarfac .gt. 0.0 ) THEN
+        ibs = 0
+      ELSE
+        ibs = 1
+      ENDIF
+      
+      ftrar = 0.0
+      
+      rar = exw*qcw*1.0e3*rho0*vt*Abs(rarfac)
+      t = temcg
+
+      IF ( ibs .eq. 1 .and. t .gt. -15.0 ) THEN
+       rarc = Max( 0.0, Min( 3.29, -1.47 - 0.2*t ) )
+      ELSE
+        IF (t .gt. tc ) THEN
+        rarc = 1.0 + t*(7.9262e-2 + t*(4.4847e-2 +     &
+     &    t*(7.4754e-3 + t*(5.4686e-4 +     &
+     &    t*(1.6737e-5 + t*1.7613e-7)))))
+!      ELSE ! IF ( t .le. -23.0) THEN
+!       rarc = 3.27
+!      ELSE ! IF ( t .le. -30.0) THEN
+!       rarc = 1.795
+        ELSEIF ( t > tmin) THEN
+!         rarc = 3.39608*( 1.0 - Abs( ( (t - tc)/(tc - tmin) )**3) )
+         rarc = 3.42533* 0.5 *(1. + Cos(pi *(((t - tc)/(-tmin + tc))))) ! 3.42533 is the value on the curve at T = -24.5284
+        ELSE
+          rarc = 0
+        ENDIF
+      ENDIF
+      
+       rarc = Max(rarc, rar0)  ! ERM 10/12/2003; changed 0 to rar0 5/8/2004
+
+!
+! New option (2/9/2005) to use original SP98 equation and cut off charging where
+!  it hits zero
+!
+      IF ( idelq .eq. 1 ) THEN  
+      
+        IF ( t .le. tc) THEN
+        rarc = Max(0.0, 1.0 + t*(7.9262e-2 + t*(4.4847e-2 +     &
+     &    t*(7.4754e-3 + t*(5.4686e-4 +     &
+     &    t*(1.6737e-5 + t*1.7613e-7))))) )
+        END IF
+        
+        IF ( t .lt. -33. ) rarc = rar0
+      
+        IF ( temcg .gt. -25.0 ) THEN
+          fac = 1.0
+        ELSEIF ( temcg .gt. -32.47 ) THEN
+          fac = 1.0 + ((temcg+25.0)/(32.47 - 25.00))
+        ELSE
+          fac = 0.0
+          qsign = 0.0
+          ftrar = 0.0
+          qconkq = 0.0
+          qconn = 1.0
+          qconm = 1.0
+          GOTO 999
+        END IF
+      
+      ENDIF
+
+      
+! check for RAR below threshold:
+      IF ( rar .le. rar0 .or. temcg .le. tmin) THEN
+        qsign = 0.0
+        ftrar = 0.0
+        qconkq = 0.0
+        qconn = 1.0
+        qconm = 1.0
+        GOTO 999
+      END IF
+
+! for now, use charging values at -8.0 for warmer temps
+! and values at -23.0 for colder temps (Saunders and Peck, 1998)      
+      IF (temcg .gt. -8.0 ) THEN
+         t = -8.0
+      ELSEIF (temcg .lt. -23.0) THEN
+         t = -23.0
+      END IF
+      
+      qsign = -1.0
+      IF (rar .gt. rarc) qsign = 1.0
+      
+      IF (qsign .gt. 0.5) THEN
+        
+          ftrar = 6.74*( rar - rarc )
+        
+        if ( awdia*1.e6.lt.155. ) then
+          qconkq = 4.9e13
+          qconm  = 3.76
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.ge.155. .and. awdia*1.e6.le.452. ) then
+          qconkq = 4.0e6
+          qconm  = 1.9
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.gt.452. ) then
+          qconkq = 52.8
+          qconm  = 0.44
+          qconn  = 2.5
+        end if
+        
+        IF ( qfac .gt. 1.0 ) THEN
+         ftrar = fac*ftrar*qfac**qconm
+        ELSE
+         ftrar = fac*ftrar
+        ENDIF
+
+      ELSEIF (qsign .lt. -0.5) THEN
+
+
+        ftrar = Min(1.0, 0.6*Abs(rarc - rar0) )*(6.5)*(-1.0 +      &
+     &    4.0/(rarc - rar0)**2 * (rar - (rarc + rar0)/2.0 )**2  )
+        ftrar = Min( 0.0, ftrar )
+        
+        if ( awdia*1.e6.lt.253. ) then
+          qconkq = 5.24e8
+          qconm  = 2.54
+          qconn  = 2.8
+        end if
+        if ( awdia*1.e6.gt.253. ) then
+          qconkq = 24.0
+          qconm  = 0.50
+          qconn  = 2.8
+        end if
+
+        IF ( qfac .gt. 1.0 ) THEN
+         ftrar = fac*ftrar*qfac**qconm
+        ELSE
+         ftrar = fac*ftrar
+        ENDIF
+        
+      END IF
+      
+      
+ 999  CONTINUE      
+      RETURN
+      END subroutine saund8
+
+! ####################################################################
+!                SUBROUTINE SAUND2
+! ####################################################################
+      subroutine saund2(temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq,qfac,rarfac)
+      
+! ####################################################################
+!
+!  Purpose:
+!   Saunders charging scheme based on rime accretion rate (RAR)
+!   as in Brooks et al. (1997) and Saunders and Peck (1998)
+!
+! 8.27.2002 added rarfac input
+!
+! 7/24/99  new adjustment to RARcritical curve: make a cubic drop-off
+!          from -23.7 to -40 (and zero charging below -40)
+!  version for small droplet curve (Saunders, ICAE 1999)
+! 8/15/99 use higher RARcrit at low temp and keep small droplet
+!
+! 12/8/99 temporary test of putting in a factor of (3.67)**qconm to
+!         approximate using the mass-weighted mean crystal diameter
+!
+! 12/17/99 for positive charging, just use ftrar = 6.74*( rar - rarc )
+!          for all temperatures (took out alternate eq. for T<-34)
+!
+! ####################################################################
+      
+      implicit none
+      real temcg ! temperature
+      real qcw ! cloud water mixing ratio 
+      real exw ! cloud water collection efficiency
+      real vt ! terminal speed difference between x and cw 
+      real awdia ! crystal diameter
+      real rho0  ! air density
+      real qsign ! sign of charge acquired by rimer (not used by calling prog)
+      real ftrar ! charge factor based on temp and RAR 
+      real qconkq ! factor kq ( or 'B') 
+      real qconm  ! exponent on crystal diameter ('a')
+      real qconn  ! exponent on speed ('b')
+      integer idelq ! charge sign, not used by calling program
+      real qfac
+      
+      real rar ! rime accretion rate
+      real rarc ! critical RAR
+      real t,tc
+      parameter (tc = -23.7)
+      real delr,delri
+      parameter (delr=0.5, delri=1.0/delr)
+      real rar0  ! lower limit of RAR where charging goes to zero
+      parameter (rar0 = 0.1)
+      real q0
+      parameter (q0 = 6.48)
+      real tema,tmin
+      parameter (tema = -7.0 , tmin = -43.)
+      integer ibs
+      
+      real fac,rarfac
+      
+! ####################################################################
+! Begin Executable code
+! ####################################################################
+
+      IF ( temcg .gt. -30 ) THEN
+        fac = 1.0
+      ELSEIF ( temcg .gt. -40.0 ) THEN
+        fac = 1.0 - ((temcg+30.0)/(40.0 - 30.0))**2
+      ELSE
+        fac = 0.0
+      END IF
+      
+      IF ( rarfac .gt. 0.0 ) THEN
+        ibs = 0
+      ELSE
+        ibs = 1
+      ENDIF
+      
+      ftrar = 0.0
+      
+      rar = exw*qcw*1.0e3*rho0*vt*Abs(rarfac)
+      t = temcg
+      IF ( ibs .eq. 1 .and. t .gt. -15.0 ) THEN
+       rarc = Max( rar0, Min( 3.29, -1.47 - 0.2*t ) )
+      ELSE
+        IF (t .gt. -7.0 ) THEN
+         rarc = 1.0 + t*(7.9262e-2 + t*(4.4847e-2 +     &
+     &    t*(7.4754e-3 + t*(5.4686e-4 +     &
+     &    t*(1.6737e-5 + t*1.7613e-7)))))
+        ELSEIF ( t .gt. -16.0 ) THEN
+         rarc =  8.0*Abs((tema-t)/(10.0+tema))*     &
+     &      Exp(- Abs((tema-t)/(10.0+tema))) +     &
+     &     1.0 + t*(7.9262e-2 + t*(4.4847e-2 +     &
+     &    t*(7.4754e-3 + t*(5.4686e-4 +     &
+     &    t*(1.6737e-5 + t*1.7613e-7)))))
+        ELSEIF ( t .gt. -21.7 ) THEN
+          rarc = 4*( 1.0 - Abs( ( (t + 25.0 )/(-25.0 - tmin) )**2) )
+        ELSE 
+          rarc = 4*( 1.0 - Abs( ( (-21.7 + 25.0 )/(-25.0 - tmin) )**2) )
+        ENDIF
+      ENDIF ! ibs .eq. 1
+      
+! check for RAR below threshold:
+      IF ( rar .le. rar0 .or. temcg .le. tmin) THEN
+        qsign = 0.0
+        ftrar = 0.0
+        qconkq = 0.0
+        qconn = 1.0
+        qconm = 1.0
+        GOTO 999
+      END IF
+
+! for now, use charging values at -8.0 for warmer temps
+! and values at -23.0 for colder temps (Saunder and Peck, 1998)      
+      IF (temcg .gt. -8.0 ) THEN
+         t = -8.0
+      ELSEIF (temcg .lt. -23.0) THEN
+         t = -23.0
+      END IF
+      
+      qsign = -1.0
+      IF (rar .gt. rarc) qsign = 1.0
+      
+      IF (qsign .gt. 0.5) THEN
+        
+!        IF ( Abs(rar - rarc) .lt. delr) THEN
+!         ftrar = delri*Abs(rar - rarc)*
+!     :           (6.74*(rarc + delr) + 1.36*t + 10.5 )
+!        ELSE
+!         ftrar = 6.74*rar + 1.36*t + 10.5
+!        END IF
+!        ftrar = Max(0.0, ftrar)
+
+!        IF ( Abs(rar - rarc) .lt. delr .and. temcg .gt. tc) THEN
+!         ftrar = Max( 0.0, delri*Abs(rar - rarc)*
+!     :           (6.74*(rarc + delr) + 1.36*t + 10.5 ) )
+!        ELSE
+!         ftrar = Max( 0.0, 6.74*rar + 1.36*t + 10.5 )
+!        END IF
+        
+!        IF ( temcg .gt. -34.0 ) THEN
+          ftrar = 6.74*( rar - rarc )
+!        ELSE
+!          ftrar = Max ( 0.0, 6.74*( rar - 
+!     :     4*( 1.0 - Abs( ( (-34.0 + 25.0 )/(-25.0 - tmin) )**2) ) ) )
+!        END IF
+        
+        if ( awdia*1.e6.lt.155. ) then
+          qconkq = 4.9e13
+          qconm  = 3.76
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.ge.155. .and. awdia*1.e6.le.452. ) then
+          qconkq = 4.0e6
+          qconm  = 1.9
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.gt.452. ) then
+          qconkq = 52.8
+          qconm  = 0.44
+          qconn  = 2.5
+        end if
+        
+        IF ( qfac .gt. 1.0 ) THEN
+         ftrar = fac*ftrar*qfac**qconm
+        ELSE
+         ftrar = fac*ftrar
+        ENDIF
+
+      ELSEIF (qsign .lt. -0.5) THEN
+
+!        IF ( Abs(rar - rarc) .lt. delr) THEN
+!         ftrar = delri*Abs(rar - rarc)*
+!     :           (3.02 - 10.59*(rarc-delr) + 2.95*(rarc-delr)**2 )
+!        ELSEIF (rar .lt. 0.4) THEN
+!         ftrar = ((rar-0.1)/0.3)*(3.02 - 10.59*(0.4) + 2.95*(0.4)**2)
+!        ELSE
+!         ftrar = 3.02 - 10.59*rar + 2.95*rar**2
+!        END IF
+
+        ftrar = Min(1.0, 0.6*Abs(rarc - rar0) )*(6.5)*(-1.0 +      &
+     &    4.0/(rarc - rar0)**2 * (rar - (rarc + rar0)/2.0 )**2  )
+        ftrar = Min( 0.0, ftrar )
+        
+        if ( awdia*1.e6.lt.253. ) then
+          qconkq = 5.24e8
+          qconm  = 2.54
+          qconn  = 2.8
+        end if
+        if ( awdia*1.e6.gt.253. ) then
+          qconkq = 24.0
+          qconm  = 0.50
+          qconn  = 2.8
+        end if
+
+        IF ( qfac .gt. 1.0 ) THEN
+         ftrar = fac*ftrar*qfac**qconm
+        ELSE
+         ftrar = fac*ftrar
+        ENDIF
+        
+      END IF
+      
+      
+ 999  CONTINUE      
+      RETURN
+      END subroutine saund2
+
+
+! ####################################################################
+!                SUBROUTINE SAUND5
+! ####################################################################
+      subroutine saund5(temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq)
+      
+! ####################################################################
+!
+!  Purpose:
+!   Saunders charging scheme based on rime accretion rate (RAR)
+!   as in Brooks et al. (1997) and Saunders and Peck (1998)
+!
+! 7/24/99  new adjustment to RARcritical curve: make a cubic drop-off
+!          from -23.7 to -40 (and zero charging below -40)
+!  version for small droplet curve (Saunders, ICAE 1999)
+! ####################################################################
+      
+      implicit none
+      real temcg ! temperature
+      real qcw ! cloud water mixing ratio 
+      real exw ! cloud water collection efficiency
+      real vt ! terminal speed difference between x and cw 
+      real awdia ! crystal diameter
+      real rho0  ! air density
+      real qsign ! sign of charge acquired by rimer (not used by calling prog)
+      real ftrar ! charge factor based on temp and RAR 
+      real qconkq ! factor kq ( or 'B') 
+      real qconm  ! exponent on crystal diameter ('a')
+      real qconn  ! exponent on speed ('b')
+      integer idelq ! charge sign, not used by calling program
+      
+      real rar ! rime accretion rate
+      real rarc ! critical RAR
+      real t,tc
+      parameter (tc = -23.7)
+      real delr,delri
+      parameter (delr=0.5, delri=1.0/delr)
+      real rar0  ! lower limit of RAR where charging goes to zero
+      parameter (rar0 = 0.1)
+      real q0
+      parameter (q0 = 6.48)
+      real tema,tmin
+      parameter (tema = -7.0 , tmin = -43.)
+      
+! ####################################################################
+! Begin Executable code
+! ####################################################################
+      
+      ftrar = 0.0
+      
+      rar = exw*qcw*1.0e3*rho0*vt
+      t = temcg
+      IF (t .gt. -7.0 ) THEN
+      rarc = 1.0 + t*(7.9262e-2 + t*(4.4847e-2 +     &
+     &  t*(7.4754e-3 + t*(5.4686e-4 +     &
+     &  t*(1.6737e-5 + t*1.7613e-7)))))
+      ELSEIF ( t .gt. -16.0 ) THEN
+       rarc =  8.0*Abs((tema-t)/(10.0+tema))*     &
+     &      Exp(- Abs((tema-t)/(10.0+tema))) +     &
+     &     1.0 + t*(7.9262e-2 + t*(4.4847e-2 +     &
+     &  t*(7.4754e-3 + t*(5.4686e-4 +     &
+     &  t*(1.6737e-5 + t*1.7613e-7)))))
+      ELSE
+       rarc = 4*( 1.0 - Abs( ( (t + 25.0 )/(-25.0 - tmin) )**2) )
+      END IF
+      
+! check for RAR below threshold:
+      IF ( rar .le. rar0 .or. temcg .le. tmin) THEN
+        qsign = 0.0
+        ftrar = 0.0
+        qconkq = 0.0
+        qconn = 1.0
+        qconm = 1.0
+        GOTO 999
+      END IF
+
+! for now, use charging values at -8.0 for warmer temps
+! and values at -23.0 for colder temps (Saunder and Peck, 1998)      
+      IF (temcg .gt. -8.0 ) THEN
+         t = -8.0
+      ELSEIF (temcg .lt. -23.0) THEN
+         t = -23.0
+      END IF
+      
+      qsign = -1.0
+      IF (rar .gt. rarc) qsign = 1.0
+      
+      IF (qsign .gt. 0.5) THEN
+        
+!        IF ( Abs(rar - rarc) .lt. delr) THEN
+!         ftrar = delri*Abs(rar - rarc)*
+!     :           (6.74*(rarc + delr) + 1.36*t + 10.5 )
+!        ELSE
+!         ftrar = 6.74*rar + 1.36*t + 10.5
+!        END IF
+!        ftrar = Max(0.0, ftrar)
+
+!        IF ( Abs(rar - rarc) .lt. delr .and. temcg .gt. tc) THEN
+!         ftrar = Max( 0.0, delri*Abs(rar - rarc)*
+!     :           (6.74*(rarc + delr) + 1.36*t + 10.5 ) )
+!        ELSE
+!         ftrar = Max( 0.0, 6.74*rar + 1.36*t + 10.5 )
+!        END IF
+        
+        IF ( temcg .gt. -34.0 ) THEN
+          ftrar = 6.74*( rar - rarc )
+        ELSE
+          ftrar = Max ( 0.0, 6.74*( rar -      &
+     &     4*( 1.0 - Abs( ( (-34.0 + 25.0 )/(-25.0 - tmin) )**2) ) ) )
+        END IF
+        
+        if ( awdia*1.e6.lt.155. ) then
+          qconkq = 4.9e13
+          qconm  = 3.76
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.ge.155. .and. awdia*1.e6.le.452. ) then
+          qconkq = 4.0e6
+          qconm  = 1.9
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.gt.452. ) then
+          qconkq = 52.8
+          qconm  = 0.44
+          qconn  = 2.5
+        end if
+
+      ELSEIF (qsign .lt. -0.5) THEN
+
+!        IF ( Abs(rar - rarc) .lt. delr) THEN
+!         ftrar = delri*Abs(rar - rarc)*
+!     :           (3.02 - 10.59*(rarc-delr) + 2.95*(rarc-delr)**2 )
+!        ELSEIF (rar .lt. 0.4) THEN
+!         ftrar = ((rar-0.1)/0.3)*(3.02 - 10.59*(0.4) + 2.95*(0.4)**2)
+!        ELSE
+!         ftrar = 3.02 - 10.59*rar + 2.95*rar**2
+!        END IF
+
+        ftrar = Min(1.0, 0.6*Abs(rarc - rar0) )*(6.5)*(-1.0 +      &
+     &    4.0/(rarc - rar0)**2 * (rar - (rarc + rar0)/2.0 )**2  )
+        ftrar = Min( 0.0, ftrar )
+        
+        if ( awdia*1.e6.lt.253. ) then
+          qconkq = 5.24e8
+          qconm  = 2.54
+          qconn  = 2.8
+        end if
+        if ( awdia*1.e6.gt.253. ) then
+          qconkq = 24.0
+          qconm  = 0.50
+          qconn  = 2.8
+        end if
+      END IF
+      
+      
+ 999  CONTINUE      
+      RETURN
+      END subroutine saund5
+
+! ####################################################################
+!                SUBROUTINE SAUND4
+! ####################################################################
+      subroutine saund4(temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq)
+      
+! ####################################################################
+!
+!  Purpose:
+!   Saunders charging scheme based on rime accretion rate (RAR)
+!   as in Brooks et al. (1997) and Saunders and Peck (1998)
+!
+! 10/12/2003:  Add line 'rarc = Max(rarc, 0.0)' to prevent negative
+!              rarc for -43 < T < -40
+!
+!
+! 7/24/99  new adjustment to RARcritical curve: make a cubic drop-off
+!          from -23.7 to -40 (and zero charging below -40)
+!
+! ####################################################################
+      
+      implicit none
+      real temcg ! temperature
+      real qcw ! cloud water mixing ratio 
+      real exw ! cloud water collection efficiency
+      real vt ! terminal speed difference between x and cw 
+      real awdia ! crystal diameter
+      real rho0  ! air density
+      real qsign ! sign of charge acquired by rimer (not used by calling prog)
+      real ftrar ! charge factor based on temp and RAR 
+      real qconkq ! factor kq ( or 'B') 
+      real qconm  ! exponent on crystal diameter ('a')
+      real qconn  ! exponent on speed ('b')
+      integer idelq ! charge sign, not used by calling program
+      
+      real rar ! rime accretion rate
+      real rarc ! critical RAR
+      real t,tc
+      parameter (tc = -23.7)
+      real delr,delri
+      parameter (delr=0.5, delri=1.0/delr)
+      real rar0  ! lower limit of RAR where charging goes to zero
+      parameter (rar0 = 0.1)
+      real q0
+      parameter (q0 = 6.48)
+      
+! ####################################################################
+! Begin Executable code
+! ####################################################################
+      
+      ftrar = 0.0
+      
+      rar = exw*qcw*1.0e3*rho0*vt
+      t = temcg
+!      IF (t .gt. -23.0 ) THEN
+!      IF (t .gt. -30.0 ) THEN
+      IF (t .gt. tc ) THEN
+      rarc = 1.0 + t*(7.9262e-2 + t*(4.4847e-2 +     &
+     &  t*(7.4754e-3 + t*(5.4686e-4 +     &
+     &  t*(1.6737e-5 + t*1.7613e-7)))))
+!      ELSE ! IF ( t .le. -23.0) THEN
+!       rarc = 3.27
+!      ELSE ! IF ( t .le. -30.0) THEN
+!       rarc = 1.795
+      ELSE ! IF ( t .le. tc) THEN
+       rarc = 3.39608*( 1.0 - Abs( ( (t - tc)/(tc + 40) )**3) )
+      END IF
+
+      
+      rarc = Max(rarc, 0.0)
+
+      
+! check for RAR below threshold:
+      IF ( rar .le. rar0 .or. temcg .le. -40.0) THEN
+        qsign = 0.0
+        ftrar = 0.0
+        qconkq = 0.0
+        qconn = 1.0
+        qconm = 1.0
+        GOTO 999
+      END IF
+
+! for now, use charging values at -8.0 for warmer temps
+! and values at -23.0 for colder temps (Saunder and Peck, 1998)      
+      IF (temcg .gt. -8.0 ) THEN
+         t = -8.0
+      ELSEIF (temcg .lt. -23.0) THEN
+         t = -23.0
+      END IF
+      
+      qsign = -1.0
+      IF (rar .gt. rarc) qsign = 1.0
+      
+      IF (qsign .gt. 0.5) THEN
+        
+!        IF ( Abs(rar - rarc) .lt. delr) THEN
+!         ftrar = delri*Abs(rar - rarc)*
+!     :           (6.74*(rarc + delr) + 1.36*t + 10.5 )
+!        ELSE
+!         ftrar = 6.74*rar + 1.36*t + 10.5
+!        END IF
+!        ftrar = Max(0.0, ftrar)
+
+        IF ( Abs(rar - rarc) .lt. delr .and. temcg .gt. tc) THEN
+         ftrar = Max( 0.0, delri*Abs(rar - rarc)*     &
+     &           (6.74*(rarc + delr) + 1.36*t + 10.5 ) )
+        ELSE
+         ftrar = Max( 0.0, 6.74*rar + 1.36*t + 10.5 )
+        END IF
+        
+        if ( awdia*1.e6.lt.155. ) then
+          qconkq = 4.9e13
+          qconm  = 3.76
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.ge.155. .and. awdia*1.e6.le.452. ) then
+          qconkq = 4.0e6
+          qconm  = 1.9
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.gt.452. ) then
+          qconkq = 52.8
+          qconm  = 0.44
+          qconn  = 2.5
+        end if
+
+      ELSEIF (qsign .lt. -0.5) THEN
+
+!        IF ( Abs(rar - rarc) .lt. delr) THEN
+!         ftrar = delri*Abs(rar - rarc)*
+!     :           (3.02 - 10.59*(rarc-delr) + 2.95*(rarc-delr)**2 )
+!        ELSEIF (rar .lt. 0.4) THEN
+!         ftrar = ((rar-0.1)/0.3)*(3.02 - 10.59*(0.4) + 2.95*(0.4)**2)
+!        ELSE
+!         ftrar = 3.02 - 10.59*rar + 2.95*rar**2
+!        END IF
+
+        ftrar = Min(1.0, 0.6*Abs(rarc - rar0) )*(7.0)*(-1.0 +      &
+     &    4.0/(rarc - rar0)**2 * (rar - (rarc + rar0)/2.0 )**2  )
+        ftrar = Min( 0.0, ftrar )
+        
+        if ( awdia*1.e6.lt.253. ) then
+          qconkq = 5.24e8
+          qconm  = 2.54
+          qconn  = 2.8
+        end if
+        if ( awdia*1.e6.gt.253. ) then
+          qconkq = 24.0
+          qconm  = 0.50
+          qconn  = 2.8
+        end if
+      END IF
+      
+      
+ 999  CONTINUE      
+      RETURN
+      END subroutine saund4
+      
+! ####################################################################
+!                SUBROUTINE SAUND3
+! ####################################################################
+      subroutine saund3(temcg,qcw,exw,vt,awdia,rho0,qsign,ftrar,     &
+     &                 qconkq,qconm,qconn,idelq)
+      
+! ####################################################################
+!
+!  Purpose:
+!   Saunders charging scheme based on rime accretion rate (RAR)
+!   as in Brooks et al. (1997) and Saunders and Peck (1998)
+!
+!  8/2/99  Put in quadratic drop-off in transferred charge 
+!          starting at -30 (fac=1.0) down to -43 (fac=0.0)
+!
+! ####################################################################
+      
+      implicit none
+      real temcg ! temperature
+      real qcw ! cloud water mixing ratio 
+      real exw ! cloud water collection efficiency
+      real vt ! terminal speed difference between x and cw 
+      real awdia ! crystal diameter
+      real rho0  ! air density
+      real qsign ! sign of charge acquired by rimer (not used by calling prog)
+      real ftrar ! charge factor based on temp and RAR 
+      real qconkq ! factor kq ( or 'B') 
+      real qconm  ! exponent on crystal diameter ('a')
+      real qconn  ! exponent on speed ('b')
+      integer idelq ! charge sign, not used by calling program
+      
+      real rar ! rime accretion rate
+      real rarc ! critical RAR
+      real t
+      real delr,delri
+      parameter (delr=0.5, delri=1.0/delr)
+      real rar0  ! lower limit of RAR where charging goes to zero
+      parameter (rar0 = 0.1)
+      real q0
+      parameter (q0 = 6.48)
+      real fac
+      
+! ####################################################################
+! Begin Executable code
+! ####################################################################
+      
+      ftrar = 0.0
+
+      IF ( temcg .gt. -30 ) THEN
+        fac = 1.0
+      ELSEIF ( temcg .gt. -40.0 ) THEN
+        fac = 1.0 - ((temcg+30.0)/(40.0 - 30.0))**2
+      ELSE
+        fac = 0.0
+      END IF
+      
+      rar = exw*qcw*1.0e3*rho0*vt
+      t = temcg
+      IF (t .gt. -23.0 ) THEN
+!      IF (t .gt. -30.0 ) THEN
+      rarc = 1.0 + t*(7.9262e-2 + t*(4.4847e-2 +     &
+     &  t*(7.4754e-3 + t*(5.4686e-4 +     &
+     &  t*(1.6737e-5 + t*1.7613e-7)))))
+      ELSE ! IF ( t .le. -23.0) THEN
+       rarc = 3.27
+!      ELSE ! IF ( t .le. -30.0) THEN
+!       rarc = 1.795
+      END IF
+      
+      
+! check for RAR below threshold:
+      IF ( rar .le. rar0 ) THEN
+        qsign = 0.0
+        ftrar = 0.0
+        qconkq = 0.0
+        qconn = 1.0
+        qconm = 1.0
+        GOTO 999
+      END IF
+
+! for now, use charging values at -8.0 for warmer temps
+! and values at -23.0 for colder temps (Saunder and Peck, 1998)      
+      IF (temcg .gt. -8.0 ) THEN
+         t = -8.0
+      ELSEIF (temcg .lt. -23.0) THEN
+         t = -23.0
+      END IF
+      
+      qsign = -1.0
+      IF (rar .gt. rarc) qsign = 1.0
+      
+      IF (qsign .gt. 0.5) THEN
+        
+!        IF ( Abs(rar - rarc) .lt. delr) THEN
+!         ftrar = delri*Abs(rar - rarc)*
+!     :           (6.74*(rarc + delr) + 1.36*t + 10.5 )
+!        ELSE
+!         ftrar = 6.74*rar + 1.36*t + 10.5
+!        END IF
+!        ftrar = Max(0.0, ftrar)
+
+         ftrar = fac*Max( 0.0, 6.74*rar + 1.36*t + 10.5 )
+        
+        if ( awdia*1.e6.lt.155. ) then
+          qconkq = 4.9e13
+          qconm  = 3.76
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.ge.155. .and. awdia*1.e6.le.452. ) then
+          qconkq = 4.0e6
+          qconm  = 1.9
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.gt.452. ) then
+          qconkq = 52.8
+          qconm  = 0.44
+          qconn  = 2.5
+        end if
+
+      ELSEIF (qsign .lt. -0.5) THEN
+
+!        IF ( Abs(rar - rarc) .lt. delr) THEN
+!         ftrar = delri*Abs(rar - rarc)*
+!     :           (3.02 - 10.59*(rarc-delr) + 2.95*(rarc-delr)**2 )
+!        ELSEIF (rar .lt. 0.4) THEN
+!         ftrar = ((rar-0.1)/0.3)*(3.02 - 10.59*(0.4) + 2.95*(0.4)**2)
+!        ELSE
+!         ftrar = 3.02 - 10.59*rar + 2.95*rar**2
+!        END IF
+
+        ftrar = fac*q0*(-1.0 +      &
+     &    4.0/(rarc - rar0)**2 * (rar - (rarc + rar0)/2.0 )**2  )
+        
+        if ( awdia*1.e6.lt.253. ) then
+          qconkq = 5.24e8
+          qconm  = 2.54
+          qconn  = 2.8
+        end if
+        if ( awdia*1.e6.gt.253. ) then
+          qconkq = 24.0
+          qconm  = 0.50
+          qconn  = 2.8
+        end if
+      END IF
+      
+      
+ 999  CONTINUE      
+      RETURN
+      END subroutine saund3
+      
+!
+! 6/21/99 
+!         Also put in a linear drop-off for -7.4 < T < 0
+!       try setting elwc = 0.5*lwc
+!
+!  11.11.03  ERM fixed some bugs that allowed charging at EW below
+!            threshold for T < -20.  Also corrected charging at low EW
+!            at -16 > T > -20.
+!
+! ####################################################################
+!                SUBROUTINE SAUND
+! ####################################################################
+      subroutine saund(temcg,qcw,exw,awdia,rho0,qsign,ftelwc,     &
+     &                 qconkq,qconm,qconn,idelq,ianom)
+     
+      implicit none
+      
+      integer ianom  ! =0 to reduce 'anomalous' regions
+                     ! =1 to keep 'anonmalous' regions unchanged
+                     ! =2 to reduce neg. anom. zone and
+                     !     remove the pos. anom. zone (use normal neg. instead)
+                     ! =3 to run same as Helsdon et al. 2001
+                     ! =4 to run Helsdon et al. 2001 without pos. anom. zone
+                     ! =5 to run Helsdon et al. 2001 without pos. or neg. anom. zones (use normal instead)
+                     ! =(anything else) to remove the anomalous zones altogether
+      real anom
+      integer ieq, iseq
+
+      real temcg ! temperature
+      real qcw ! cloud water mixing ratio 
+      real exw ! cloud water collection efficiency
+!      real vt ! terminal speed difference between x and cw 
+      real awdia ! crystal diameter
+      real rho0  ! air density
+      real qsign ! sign of charge acquired by rimer (not used by calling prog)
+      real ftrar ! charge factor based on temp and RAR 
+      real qconkq ! factor kq ( or 'B') 
+      real qconm  ! exponent on crystal diameter ('a')
+      real qconn  ! exponent on speed ('b')
+      integer idelq ! charge sign, not used by calling program
+      real ftelwc, fac
+      
+      real elwc, trevsau, qlwc, pi, cew
+!
+! ####################################################
+!
+
+      IF ( temcg .gt. -30 ) THEN
+        fac = 1.0
+      ELSEIF ( temcg .gt. -40.0 ) THEN
+        fac = 1.0 - ((temcg+30.0)/(40.0 - 30.0))**2
+      ELSE
+        fac = 0.0
+      END IF
+
+      ieq = 0
+      pi    = 4.*atan(1.0)
+!
+      qlwc = qcw*(1.e3)*rho0
+      elwc = qlwc*Min(1.0,exw)
+!      elwc = qlwc*0.5
+!
+!
+!   Saunders et al. 1991 non-inductive parameterizations
+!
+!
+      idelq = 0
+      ftelwc = 0.0
+      qsign = 0.0
+      qconkq = 0.0
+      qconm = 1.0
+      qconn = 1.0
+
+      IF ( ( temcg .lt. -20.0 .and. elwc .le. 0.061 ) .or.     &
+     &     (  elwc .le. 0.026 ) ) THEN
+       RETURN
+      ENDIF
+!
+!   case I  (positive anomalous zone)
+!
+      IF ( ( temcg.lt.(-20.0) .or.      &
+     &    ( temcg.lt.(-18.0) .and. ianom .ne. 3 ) )     &
+     &      .and. elwc.lt.(0.1596) .and. ianom .ne. 2      &
+     &       .and. ianom .ne. 4 .and. ianom .ne. 5 ) then
+!
+      ieq = 1
+      idelq = 1
+!
+!  sign
+!
+      qsign = 1.0
+!
+!  f(t,lwc)
+!
+      ftelwc = 0.0
+      
+      if (elwc.lt.(0.12).and.elwc.gt.(0.061)) then
+      ftelwc = ( (2041.76)*elwc-(128.70) )
+      end if
+      if (elwc.lt.(0.1596).and.elwc.ge.(0.12)) then
+      ftelwc = ( (-2900.22)*elwc+(462.91) )
+      end if
+      
+      IF ( temcg .gt. -20.0 ) THEN
+       ftelwc = ftelwc*( -temcg - 18.0 )*0.5
+      ENDIF
+!
+! f(awdia)
+!
+      
+      IF ( ianom .eq. 0 .or. ianom .eq. 3 ) THEN
+         anom = 0.1
+      ELSEIF ( ianom .eq. 1 ) THEN
+         anom = 1.0
+      ELSE
+         anom = 0.0
+      ENDIF
+      
+      if ( awdia*1.e6.lt.155. ) then
+      qconkq = anom*4.9e13
+      qconm  = 3.76
+      qconn  = 2.5
+      end if
+      if ( awdia*1.e6.ge.155. .and.      &
+     &     awdia*1.e6.le.452. ) then
+      qconkq = anom*4.9e6
+      qconm  = 1.9
+      qconn  = 2.5
+      end if
+      if ( awdia*1.e6.gt.452. ) then
+      qconkq = anom*52.8
+      qconm  = 0.44
+      qconn  = 2.5
+      end if
+!
+!  end case I
+!
+      end if
+!
+!
+!   case II  (zero charging at low EW)
+!
+      if ( ( (temcg.ge.(-20.0) .or. (ianom.eq.2) ) .and.      &
+     &      temcg.lt.(-16.0)) .and.      &
+     &     elwc.lt.(0.06) ) then
+!
+      ieq = 2
+      idelq = 1
+!
+!  sign
+!
+      qsign = 0.0
+!
+!  f(t,lwc)
+!
+      ftelwc = 0.0
+!
+! f(awdia)
+!
+      qconkq = 0.0
+      qconm  = 1.0
+      qconn  = 1.0
+!
+!  end case II
+!
+      end if
+!
+!   case III  (negative anomalous zone)
+!
+      if ( ( temcg.ge.(-16.0) .or.      &
+     &      ( temcg.ge.(-18.0) .and. ianom .ne. 3 .and. ianom .ne. 4) )     &
+     &        .and. elwc.lt.(0.22) .and. ianom .ne. 5 ) then
+!
+      ieq = 3
+      idelq = 1
+!
+!  sign
+!
+      qsign = -1.
+!
+!  f(t,lwc)
+!
+!  If elwc.lt.0.03:
+      ftelwc = 0.0                                  ! ERM bug fix 11.11.2003
+
+      if (elwc.lt.(0.14).and.elwc.gt.(0.026)) then
+       ftelwc = ( (-314.40)*elwc+(7.92) ) !iseq=2
+      end if
+      if (elwc.lt.(0.22).and.elwc.ge.(0.14)) then
+       ftelwc = ( (419.4)*elwc-(92.64) ) !iseq=3
+      end if
+
+      ftelwc = Min ( 0.0, ftelwc ) 
+      
+      IF ( temcg .lt. -16.0 ) THEN
+        ftelwc = ftelwc*( temcg + 18.0 )*0.5 
+      ENDIF
+      
+      IF ( temcg .gt. -7.38 ) ftelwc = ftelwc*Abs(temcg/7.38)
+!
+! f(awdia)
+!
+      
+      IF ( ianom .eq. 0 .or. (ianom .ge. 2 .and. ianom .le. 4) ) THEN
+         anom = 0.2
+      ELSEIF ( ianom .eq. 1 ) THEN
+         anom = 1.0
+      ELSE
+         anom = 0.0
+      ENDIF
+
+      if ( awdia*1.e6.lt.253. ) then
+      qconkq = anom*5.24e8
+      qconm  = 2.54
+      qconn  = 2.8
+      end if
+      if ( awdia*1.e6.gt.253. ) then
+      qconkq = anom*24.0
+      qconm  = 0.50
+      qconn  = 2.8
+      end if
+!
+!  end case III
+!
+      end if
+!
+!  ASSIGN NORMAL CHARGING ZONES
+!
+      trevsau = -15.06*elwc-7.38
+      
+      iseq = 7 ! set default for [something]
+      IF ( temcg .gt. -10.69 .and. elwc .gt. 0.22 ) THEN
+        cew = 0.22
+        iseq = 1
+      ELSEIF (temcg .lt. -24. .and. elwc .gt. 1.1 ) THEN
+        cew = 1.1
+        iseq = 8
+      ELSEIF (temcg .lt. -24.0 .and. elwc .le. 1.1 ) THEN
+        cew = 1.1
+        iseq = 7
+      ELSEIF ( temcg .le. -10.69 .and. temcg .ge. -24.0 ) THEN
+         cew = -0.49 - (6.64e-2)*temcg
+         IF ( elwc .gt. cew ) THEN
+           iseq = 4
+         ELSE
+           iseq = 7
+         ENDIF
+      ENDIF
+ 
+      IF ( temcg .le. -7.38 .and. temcg .ge. -24.0 .and. ianom .eq. 5 ) THEN
+         cew = -0.49 - (6.64e-2)*temcg
+         IF ( elwc .gt. cew ) THEN
+           iseq = 4
+         ELSE
+           iseq = 7
+         ENDIF
+      ENDIF
+
+
+!
+!   case IV (normal positive zone, above the critical line)
+!
+
+      IF ( iseq .eq. 1 .or. iseq .eq. 8 .or. iseq .eq. 4 ) THEN
+!
+      ieq = 4
+      idelq = 1
+!
+!  sign
+!
+      qsign = 1.0
+!
+!  f(t,lwc)
+!
+      IF ( iseq .eq. 4 ) THEN
+        ftelwc = (20.22)*elwc+(1.36)*temcg+(10.05)
+      ELSEIF ( iseq .eq. 1 .and. ianom /= 5 ) THEN
+        ftelwc = 20.22*elwc - 4.4484 ! value of T set to -10.69
+!cccc      ENDIF
+      ELSEIF ( iseq .eq. 1 .and. ianom == 5 ) THEN
+        ftelwc = 20.22*(elwc - cew)
+      ELSEIF ( iseq .eq. 8 ) THEN
+        IF ( ianom .eq. 3 .or. ianom .eq. 4 ) THEN 
+          ftelwc = Max(0.0, (20.22)*elwc - 22.24 )
+        ELSE  ! create region of zero charging
+          ftelwc = Max(0.0, (20.22)*elwc+(1.36)*temcg+(10.05))
+        ENDIF
+      ENDIF
+      IF ( temcg .gt. -7.38 )     &
+     &   ftelwc = Abs(temcg/7.38)*     &
+     &            ((20.22)*elwc + (1.36)*(-7.38) + 10.05)
+
+!      IF ( ftelwc .lt. 0 ) ftelwc = 0.0
+      ftelwc = Max ( 0.0 , ftelwc )
+!
+! f(awdia)
+!
+      if ( awdia*1.e6.lt.155. ) then
+      qconkq = 4.9e13
+      qconm  = 3.76
+      qconn  = 2.5
+      end if
+      if ( awdia*1.e6.ge.155. .and.      &
+     &     awdia*1.e6.le.452. ) then
+      qconkq = 4.9e6
+      qconm  = 1.9
+      qconn  = 2.5
+      end if
+      if ( awdia*1.e6.gt.452. ) then
+      qconkq = 52.8
+      qconm  = 0.44
+      qconn  = 2.5
+      end if
+!
+!  end case IV
+!
+      END IF
+!
+!
+!   case V (normal negative zone, below the critical line)
+!
+!      if ( temcg.le.(trevsau) .and. 
+!     >     elwc.lt.(1.1) .and. 
+!     >     idelq .eq. 0 ) then
+        IF ( idelq .eq. 0 .and. iseq .eq. 7 ) THEN
+!
+      ieq = 7
+      idelq = 1
+!
+!  sign
+!
+      qsign = -1.
+!
+!  f(t,lwc)
+!
+      ftelwc = Min( 0.0, (3.02)-(31.76)*elwc+(26.53)*elwc**2 )
+!
+! f(awdia)
+!
+      if ( awdia*1.e6.lt.253. ) then
+      qconkq = 5.24e8
+      qconm  = 2.54
+      qconn  = 2.8
+      end if
+      if ( awdia*1.e6.gt.253. ) then
+      qconkq = 24.0
+      qconm  = 0.50
+      qconn  = 2.8
+      end if
+!
+!  end case V
+!
+      end if
+      
+      ftelwc = fac*ftelwc
+!
+!     print*,'qsign',qsign
+!     print*,'ftelwc',ftelwc
+!     print*,'qconkq',qconkq
+!     print*,'qconm',qconm
+!     print*,'qconn',qconn
+!     print*,'idelq',idelq
+!     print*,'awdia',awdia
+!     print*,'temcg',temcg
+!     print*,'qcw',qcw
+!
+      return
+      end subroutine saund
+!
+!
+! ####################################################################
+!                SUBROUTINE SAUNDMST
+! ####################################################################
+      subroutine saundmst(temcg,ssi,vt,awdia,rho0,     &
+     &                 qsign,ftrar,qcw,exw,     &
+     &                 qconkq,qconm,qconn,idelq,rarfac)
+      
+! ####################################################################
+!
+!  Purpose:
+!    Charge separation based on having just ice supersaturation but little
+!    or no riming. (Mitzeva, Saunders, and Tsenova, 2006, Atmos. Res.)
+!
+!  NOTE: 'q' here does nothing -- ftrar is really set in the calling subroutine
+!     using qsign for polarity.
+!
+!
+! ####################################################################
+      
+      implicit none
+      real temcg ! temperature
+      real ssi ! ice supersaturation
+      real qcw !  cloud liquid water mixing ratio
+      real exw ! cloud water collection efficiency
+      real vt ! terminal speed difference between x and cw 
+      real awdia ! crystal diameter
+      real rho0  ! air density
+      real qsign ! sign of charge acquired by rimer (not used by calling prog)
+      real ftrar ! charge factor based on temp and RAR 
+      real qconkq ! factor kq ( or 'B') 
+      real qconm  ! exponent on crystal diameter ('a')
+      real qconn  ! exponent on speed ('b')
+      integer idelq ! charge sign, not used by calling program
+!      real qfac
+      real rarfac  ! factor to reduce rar for purposes of charge calculation
+      
+      real rar ! rime accretion rate
+      real rarc ! critical RAR
+      real t,tc
+      parameter (tc = -23.7)
+      real delr,delri
+      parameter (delr=0.5, delri=1.0/delr)
+      real rar0  ! lower limit of RAR where charging goes to zero
+      parameter (rar0 = 0.1)
+      real q0
+      parameter (q0 = 6.48)
+      real tema,tmin
+      parameter (tema = -7.0 , tmin = -37.0)
+      integer ibs
+      
+      real fac
+      real q
+      
+! ####################################################################
+! Begin Executable code
+! ####################################################################
+
+
+      fac = 1.0
+      q = 1.
+      
+      rar = exw*qcw*1.0e3*rho0*vt*Abs(rarfac)
+      t = temcg
+
+      IF ( rar .gt. rar0 ) THEN ! should not be here if there is riming
+          fac = 0.0
+          qsign = 0.0
+          ftrar = 0.0
+          qconkq = 0.0
+          qconn = 1.0
+          qconm = 1.0
+          GOTO 999
+        
+      ENDIF
+      
+      
+      IF ( ssi .ge. 1.0 ) THEN
+        qsign = -1.0
+      ELSE
+        qsign =  1.0
+      ENDIF
+      
+      IF (qsign .gt. 0.5) THEN
+        
+        
+        if ( awdia*1.e6.lt.155. ) then
+          qconkq = 4.9e13
+          qconm  = 3.76
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.ge.155. .and. awdia*1.e6.le.452. ) then
+          qconkq = 4.0e6
+          qconm  = 1.9
+          qconn  = 2.5
+        end if
+        if ( awdia*1.e6.gt.452. ) then
+          qconkq = 52.8
+          qconm  = 0.44
+          qconn  = 2.5
+        end if
+        
+         ftrar = q
+
+      ELSEIF (qsign .lt. -0.5) THEN
+
+
+        
+        if ( awdia*1.e6.lt.253. ) then
+          qconkq = 5.24e8
+          qconm  = 2.54
+          qconn  = 2.8
+        end if
+        if ( awdia*1.e6.gt.253. ) then
+          qconkq = 24.0
+          qconm  = 0.50
+          qconn  = 2.8
+        end if
+
+         ftrar = -q
+        
+      END IF
+      
+      
+ 999  CONTINUE      
+      RETURN
+      END subroutine saundmst
       
 
 ! ##############################################################################
@@ -8160,7 +11781,6 @@ END SUBROUTINE nssl_2mom_driver
       
       real :: cvm,cpm,rmm
 
-      real, parameter :: rovcp = rd/cp
       real, parameter ::      cpv = 1885.0       ! specific heat of water vapor at constant pressure
       
       integer :: kstag
@@ -8264,7 +11884,7 @@ END SUBROUTINE nssl_2mom_driver
       if ( temg(1) .lt. tfr ) then
       end if
 !
-      if ( (temg(1) .gt. tfrh .or. an(ix,jy,kz,lv)/qvs(1) > maxsupersat ) .and.  &
+      if ( (temg(1) .gt. tfrh .or. an(ix,jy,kz,lv)/qvs(1) > maxlowtempss ) .and.  &
      &   ( an(ix,jy,kz,lv)  .gt. qss(1) .or. &
      &     an(ix,jy,kz,lc)  .gt. qxmin(lc)   .or.  &
      &     ( an(ix,jy,kz,lr)  .gt. qxmin(lr) .and. rcond == 2 )  &
@@ -8596,7 +12216,9 @@ END SUBROUTINE nssl_2mom_driver
 
       DO mgs=1,ngscnt
         dcloud = 0.0
-        IF ( temg(mgs) .le. tfrh .and. qx(mgs,lv)/qvs(mgs) < maxsupersat ) THEN
+        ! Skip points at low temperature if SS stays less than 1.08, 
+        ! otherwise allow nucleation at low temp (will freeze at next time step)
+        IF ( temg(mgs) .le. tfrh .and. qx(mgs,lv)/qvs(mgs) < maxlowtempss ) THEN 
          CYCLE
         ENDIF
 
@@ -9703,9 +13325,22 @@ END SUBROUTINE nssl_2mom_driver
         IF ( lhlw .gt. 1 ) THEN
            an(ix,jy,kz,lhlw) = 0.0
         ENDIF
+
+        IF ( lnhlf .gt. 1 ) THEN
+           an(ix,jy,kz,lnhlf) = 0.0
+        ENDIF
       
         IF ( lzhl .gt. 1 ) THEN
            an(ix,jy,kz,lzhl) = 0.0
+        ENDIF
+        IF ( ipelec > 0 .and. lschl .gt. 1 ) THEN
+          IF ( an(ix,jy,kz,lschl) .gt. 0.0 ) THEN
+            an(ix,jy,kz,lscpi) = an(ix,jy,kz,lscpi) + an(ix,jy,kz,lschl)*eci
+          ELSE
+            an(ix,jy,kz,lscni) = an(ix,jy,kz,lscni) - an(ix,jy,kz,lschl)*eci
+          ENDIF
+          
+           an(ix,jy,kz,lschl) = 0.0
         ENDIF
 
       ELSE
@@ -9799,9 +13434,21 @@ END SUBROUTINE nssl_2mom_driver
         IF ( lhw .gt. 1 ) THEN
            an(ix,jy,kz,lhw) = 0.0
         ENDIF
+
+        IF ( lnhf .gt. 1 ) THEN
+           an(ix,jy,kz,lnhf) = 0.0
+        ENDIF
       
         IF ( lzh .gt. 1 ) THEN
            an(ix,jy,kz,lzh) = 0.0
+        ENDIF
+        IF ( ipelec > 0 .and. lsch .gt. 1 ) THEN
+          IF ( an(ix,jy,kz,lsch) .gt. 0.0 ) THEN
+            an(ix,jy,kz,lscpi) = an(ix,jy,kz,lscpi) + an(ix,jy,kz,lsch)*eci
+          ELSE
+            an(ix,jy,kz,lscni) = an(ix,jy,kz,lscni) - an(ix,jy,kz,lsch)*eci
+          ENDIF
+           an(ix,jy,kz,lsch) = 0.0
         ENDIF
 
       ELSE
@@ -9920,6 +13567,16 @@ END SUBROUTINE nssl_2mom_driver
 
       ENDIF
       
+        IF ( ipelec > 0 .and. lscs > 1 ) THEN
+          IF ( an(ix,jy,kz,lscs) .gt. 0.0 ) THEN
+            an(ix,jy,kz,lscpi) = an(ix,jy,kz,lscpi) + an(ix,jy,kz,lscs)*eci
+          ELSE
+            an(ix,jy,kz,lscni) = an(ix,jy,kz,lscni) - an(ix,jy,kz,lscs)*eci
+          ENDIF
+          
+          an(ix,jy,kz,lscs) = 0.0
+          
+        ENDIF
 
       ELSEIF ( lvol(ls) .gt. 1 ) THEN  ! check density
         IF ( an(ix,jy,kz,lvs) .gt. 0.0 ) THEN
@@ -9946,6 +13603,16 @@ END SUBROUTINE nssl_2mom_driver
           an(ix,jy,kz,lnr) = 0.0
         ENDIF
         
+        IF ( ipelec > 0 .and. lscr .gt. 1 ) THEN
+          IF ( an(ix,jy,kz,lscr) .gt. 0.0 ) THEN
+            an(ix,jy,kz,lscpi) = an(ix,jy,kz,lscpi) + an(ix,jy,kz,lscr)*eci
+          ELSE
+            an(ix,jy,kz,lscni) = an(ix,jy,kz,lscni) - an(ix,jy,kz,lscr)*eci
+          ENDIF
+
+           an(ix,jy,kz,lscr) = 0.0
+
+        ENDIF
       end if
 
 !
@@ -9958,6 +13625,14 @@ END SUBROUTINE nssl_2mom_driver
        IF ( ipconc .ge. 1 ) THEN
          an(ix,jy,kz,lni) = 0.0
        ENDIF
+        IF ( ipelec > 0 .and. lsci .gt. 1 ) THEN
+          IF ( an(ix,jy,kz,lsci) .gt. 0.0 ) THEN
+            an(ix,jy,kz,lscpi) = an(ix,jy,kz,lscpi) + an(ix,jy,kz,lsci)*eci
+          ELSE
+            an(ix,jy,kz,lscni) = an(ix,jy,kz,lscni) - an(ix,jy,kz,lsci)*eci
+          ENDIF
+           an(ix,jy,kz,lsci) = 0.0
+        ENDIF
       ENDIF
 
 !
@@ -9971,6 +13646,14 @@ END SUBROUTINE nssl_2mom_driver
        IF ( ipconc .ge. 1 ) THEN
          an(ix,jy,kz,lnis) = 0.0
        ENDIF
+        IF ( ipelec > 0 .and. lscis .gt. 1 ) THEN
+          IF ( an(ix,jy,kz,lscis) .gt. 0.0 ) THEN
+            an(ix,jy,kz,lscpi) = an(ix,jy,kz,lscpi) + an(ix,jy,kz,lscis)*eci
+          ELSE
+            an(ix,jy,kz,lscni) = an(ix,jy,kz,lscni) - an(ix,jy,kz,lscis)*eci
+          ENDIF
+           an(ix,jy,kz,lscis) = 0.0
+        ENDIF
       
       ELSEIF ( icespheres >= 2 ) THEN ! } {
        km1 = Max(1, kz-1)
@@ -9983,6 +13666,10 @@ END SUBROUTINE nssl_2mom_driver
          an(ix,jy,kz,lni) = an(ix,jy,kz,lni) + an(ix,jy,kz,lnis)
          an(ix,jy,kz,lis)= 0.0
          an(ix,jy,kz,lnis)= 0.0
+        IF ( ipelec > 0 .and. lscis .gt. 1 ) THEN
+         an(ix,jy,kz,lsci) = an(ix,jy,kz,lsci) + an(ix,jy,kz,lscis)
+         an(ix,jy,kz,lscis)= 0.0
+        ENDIF
          
        ENDIF
        
@@ -10026,6 +13713,16 @@ END SUBROUTINE nssl_2mom_driver
          
          ENDIF
 
+        IF ( ipelec > 0 .and. lscw .gt. 1 ) THEN
+          IF ( an(ix,jy,kz,lscw) .gt. 0.0 ) THEN
+            an(ix,jy,kz,lscpi) = an(ix,jy,kz,lscpi) + an(ix,jy,kz,lscw)*eci
+          ELSE
+            an(ix,jy,kz,lscni) = an(ix,jy,kz,lscni) - an(ix,jy,kz,lscw)*eci
+          ENDIF
+
+           an(ix,jy,kz,lscw) = 0.0
+
+        ENDIF
        ENDIF
 
       ENDIF
@@ -10071,6 +13768,7 @@ END SUBROUTINE nssl_2mom_driver
 !     &   ln,ipc,lvol,lz,lliq,   &
      &   cdx,                              &
      &   xdn0,tmp3d,tkediss  &
+     &  ,thproc,numproc,dx1,dy1     &
      & ,timevtcalc,axtra,io_flag  &
      & , has_wetscav,rainprod2d, evapprod2d &
      & ,elec,its,ids,ide,jds,jde &
@@ -10153,6 +13851,9 @@ END SUBROUTINE nssl_2mom_driver
       integer :: my_rank = 0
       integer, parameter :: myprock = 1, nprock = 1
       logical, intent(in) :: has_wetscav
+      integer, intent(in) :: numproc
+      real, intent(inout) :: thproc(nz,numproc)
+      real, intent(in) :: dx1,dy1
       real rainprod2d(-nor+1:nx+nor,-norz+ng1:nz+norz)
       real evapprod2d(-nor+1:nx+nor,-norz+ng1:nz+norz)
 
@@ -10191,7 +13892,6 @@ END SUBROUTINE nssl_2mom_driver
       logical, parameter :: usegamxinf2 = .false.
       logical, parameter :: usegamxinf3 = .false.
 !      real rar  ! rime accretion rate as calculated from qxacw
-
 
 ! a few vars for time-split fallout      
       real vtmax
@@ -10483,7 +14183,6 @@ END SUBROUTINE nssl_2mom_driver
       
       real cvm,cpm,rmm
 
-      real, parameter :: rovcp = rd/cp
       real, parameter ::      cpv = 1885.0       ! specific heat of water vapor at constant pressure
 !
       real fcci(ngs), fcip(ngs)
@@ -10519,6 +14218,7 @@ END SUBROUTINE nssl_2mom_driver
       real ::  vtxbar(ngs,lc:lhab,3)
       real ::  xmas(ngs,lc:lhab)
       real ::  xdn(ngs,lc:lhab)
+      real ::  xdntmp(ngs,lc:lhab)
       real ::  cdxgs(ngs,lc:lhab)
       real ::  xdia(ngs,lc:lhab,3)
       real ::  vtwtdia(ngs,lr:lhab) ! sweep-out volume weighted diameter
@@ -10599,6 +14299,90 @@ END SUBROUTINE nssl_2mom_driver
       real cionpmxd(ngs),cionnmxd(ngs)
       real clionpmxd(ngs),clionnmxd(ngs)
 
+!
+!
+!  Da electricity array work space...
+!
+!
+      real dezcomp(ngs)
+      real sctem(ngs)
+      real dellwc(ngs)
+      real,parameter :: tcc = -30.
+!
+!  space charge arrays.....
+!
+      real scsacw(ngs)
+      real scsacr(ngs)
+      real sciacw(ngs) ! not present...
+      real scsaci(ngs)
+      real :: scsacis(ngs)
+      real sxsaci(ngs)
+!
+      real schacw(ngs), schacr(ngs)
+      real schaci(ngs), schacs(ngs)
+      real :: schacis(ngs)
+      real sxhaci(ngs), sxhacs(ngs)
+
+
+      real schmlr(ngs), scsmlr(ngs)
+      real scsshr(ngs), schshr(ngs)
+      real scscev(ngs), scsdep(ngs)
+!
+      real schlacw(ngs), schlacr(ngs)
+      real schlaci(ngs), schlacs(ngs)
+      real :: schlacis(ngs)
+
+      real scfacw(ngs), scfacr(ngs)
+      real scfaci(ngs), scfacs(ngs)
+      real :: scfacis(ngs)
+
+      real exy(ngs,ls:lhab,lc:ls)
+      real scxacy(ngs,ls:lhab,lc:ls)
+      real cxacy(ngs,ls:lhab,lc:ls)
+      real sxxacy(ngs,ls:lhab,li:ls)
+
+! ions  - one size assumed
+
+      real cionp(ngs),cionn(ngs),clionp(ngs),clionn(ngs) 
+
+!    charge concentration
+
+!    production of space charge per collison/per unit mass?
+
+      real fschw(ngs),fscsw(ngs),fschl(ngs),fscfw(ngs)
+      real fschw2(ngs),fscsw2(ngs),fschl2(ngs),fscfw2(ngs)
+      real fsccw(ngs),fscci(ngs),fscrw(ngs),fscis(ngs)
+
+!    production of space charge term  + / -
+
+      real  psctot(ngs)
+      real  psctotmx,psctotmn
+      real  psccwi(ngs), psccwd(ngs) ! cloud water
+      real  psccii(ngs), psccid(ngs) ! ice crystals
+      real  pscisi(ngs), pscisd(ngs) ! ice spheres
+      real  pscrwi(ngs), pscrwd(ngs)  ! rain water
+      real  pscswi(ngs), pscswd(ngs)  ! snow
+      real  pschwi(ngs), pschwd(ngs)  ! graupel
+      real  pscfwi(ngs), pscfwd(ngs)  ! frozen drops
+      real  pschli(ngs), pschld(ngs)   ! hail
+
+!ions assume mass = 0
+      real  pscpii(ngs), pscpid(ngs) !positive ions
+      real  pscnii(ngs), pscnid(ngs) !negative ions
+      real  pscplii(ngs), pscplid(ngs) !positive (large) ions
+      real  pscnlii(ngs), pscnlid(ngs) !negative (large) ions
+
+!      production of space charge from mass transfer
+
+      real  psccwmi(ngs), psccwmd(ngs)
+      real  psccimi(ngs), psccimd(ngs)
+      real  pscismi(ngs), pscismd(ngs)
+      real  pscrwmi(ngs), pscrwmd(ngs)
+      real  pscswmi(ngs), pscswmd(ngs)
+      real  pschwmi(ngs), pschwmd(ngs)
+      real  pscfwmi(ngs), pscfwmd(ngs)
+      real  pschlmi(ngs), pschlmd(ngs)
+
 
       real elec(-nor+ng1:nx+nor,-nor+ng1:ny+nor,-norz+ng1:nz+norz) ! Ez (elecsave)
 
@@ -10643,6 +14427,7 @@ END SUBROUTINE nssl_2mom_driver
 
       real chlsbv(ngs), chldpv(ngs)
       real chlmlr(ngs), chlmlrr(ngs)
+      real chlfmlr(ngs)
 !      real chlmlrsave(ngs),chlsave(ngs),qhlsave(ngs)
       real chlshr(ngs), chlshrr(ngs)
 
@@ -11036,8 +14821,8 @@ END SUBROUTINE nssl_2mom_driver
       real arg  ! gamma is a function
       real erbnd1, fdgt1, costhe1
       real qeps
-      real dyi2,dzi2,cp608,bta1,cnit,dragh,dnz00,pii
-      real qccrit,gf4br,gf4ds,gf4p5, gf3ds, gf1ds,gr
+      real dyi2,dzi2,bta1,cnit,dragh,dnz00,pii ! ,cp608
+      real qccrit,gf4br,gf4ds,gf4p5, gf3ds, gf1ds
       real gf1palp(ngs) ! for storing Gamma[1.0 + alphar]
 
       
@@ -11097,6 +14882,7 @@ END SUBROUTINE nssl_2mom_driver
       integer :: infdo
       
       real tau, ewtmp
+      real ftau
       
       integer cntnic_noliq
       real     q_noliqmn, q_noliqmx
@@ -11113,6 +14899,9 @@ END SUBROUTINE nssl_2mom_driver
       real :: term1,term2,term3,term4
       real :: qaacw ! combined qsacw-qhacw for WSM6 variation
 
+
+! inline function for charging formula
+      ftau(tau) = (-1.7e-5)*tau**3 - 0.003*tau**2 - 0.05*tau + 0.13
 
 
 !
@@ -11167,6 +14956,19 @@ END SUBROUTINE nssl_2mom_driver
         ldovol = ldovol .or. ( lvol(il) .gt. 1 )
       ENDDO
 
+      delqnxa(lc:lqmx) = 0.0 ! delqnia
+      delqxxa(lc:lqmx) = 0.0 ! delqxia
+
+      delqnxa(li) = delqnia
+      delqxxa(li) = delqxia
+
+      IF ( lis > 1 ) THEN
+        delqnxa(lis) = delqnia
+        delqxxa(lis) = delqxia
+      ENDIF
+
+      delqnxa(ls) = delqnsa
+      delqxxa(ls) = delqxsa
 
       ffrzh = 1
 !      DO il = lc,lhab
@@ -11200,7 +15002,7 @@ END SUBROUTINE nssl_2mom_driver
 !  constants
 !
 
-      cp608 = 0.608
+!      cp608 = 0.608
       aradcw = -0.27544
       bradcw = 0.26249e+06
       cradcw = -1.8896e+10
@@ -11231,7 +15033,7 @@ END SUBROUTINE nssl_2mom_driver
       gf4p5 = 11.63172839656745 ! gamma(4.0+0.5)
       gf3ds = 3.0458730354120997 ! gamma(3.0+ds)
       gf1ds = 0.8863557896089221 ! gamma(1.0+ds)
-      gr = 9.8
+
       gf43rds = 0.8929795116 ! gamma(4./3.)
       gf53rds = 0.9027452930 ! gamma(5./3.)
       gf73rds = 1.190639349 ! gamma(7./3.)
@@ -11562,7 +15364,45 @@ END SUBROUTINE nssl_2mom_driver
 
 
 
+! load charges
+      IF ( ipelec > 0 .and. lscw .gt. 1 ) THEN
+        ierr = 0
+        DO il = lc,lhab
+          DO mgs = 1,ngscnt
+            scx(mgs,il) = an(igs(mgs),jy,kgs(mgs),lsc(il))
+!            IF ( .not. (scx(mgs,il) > -1.e-6 .and. scx(mgs,il) < 1.e-6 ) ) THEN
+!            IF ( Abs (scx(mgs,il) ) > 1000.e-9 .or. Abs (scx(mgs,il) ) > 1.e-9 ) THEN ! DEBUGTED
+            IF ( Abs (scx(mgs,il) ) > 1000.e-9 ) THEN 
+             ierr = ierr + 1
+             write(0,*) 'Problem0a with scx il = ',il,lsc(il),scx(mgs,il),qx(mgs,il),cx(mgs,il)
+             write(0,*) 'at ix,jy,kz = ',igs(mgs),jyslab,kgs(mgs)
+          IF ( ierr > 10 ) STOP
+             IF ( il == ls ) THEN
+             IF ( Abs (scx(mgs,il) ) > 10.e-9 ) THEN
+               write(0,*) 'myrank,scs,mgs = ',my_rank,scx(mgs,il),mgs
+             ENDIF
+             ENDIF
+            ENDIF
+          ENDDO
+        ENDDO
+          IF ( ierr > 0 ) STOP
+
+      DO mgs = 1,ngscnt
+       cionp(mgs) = an(igs(mgs),jy,kgs(mgs),lscpi)
+       cionn(mgs) = an(igs(mgs),jy,kgs(mgs),lscni)
+      if ( largeion ) then
+       clionp(mgs) = an(igs(mgs),jy,kgs(mgs),lscpli)
+       clionn(mgs) = an(igs(mgs),jy,kgs(mgs),lscnli)
+      end if
+      ENDDO ! mgs 
+
+!$PAR CRITICAL SECTION
+!$PAR END CRITICAL SECTION
+
+      ELSE
         scx(:,:) = 0.0
+      ENDIF
+
 !
 !  set shape parameters
 !
@@ -11793,6 +15633,13 @@ END SUBROUTINE nssl_2mom_driver
       ENDIF
 
 
+!
+! Set liquid water fraction
+!
+      fhw(:) = 0.0
+      fsw(:) = 0.0
+      fhlw(:) = 0.0
+
 
 
 
@@ -11955,6 +15802,7 @@ END SUBROUTINE nssl_2mom_driver
         IF ( lhl .gt. 1 ) THEN
 
           xdn(mgs,lhl) = xdn0(lhl)
+          xdntmp(mgs,lhl) = xdn0(lhl)
 
           IF ( lvol(lhl) .gt. 1 ) THEN
            IF ( vx(mgs,lhl) .gt. 0.0 .and. qx(mgs,lhl) .gt. qxmin(lhl) ) THEN
@@ -11966,6 +15814,7 @@ END SUBROUTINE nssl_2mom_driver
 
              xdn(mgs,lhl) = Min( dnmx, Max( xdnmn(lhl), rho0(mgs)*qx(mgs,lhl)/vx(mgs,lhl) ) )
              vx(mgs,lhl) = rho0(mgs)*qx(mgs,lhl)/xdn(mgs,lhl)
+             xdntmp(mgs,lhl) = xdn(mgs,lhl)
          
            ELSEIF ( vx(mgs,lhl) == 0.0 .and. qx(mgs,lhl) .gt. qxmin(lhl) ) THEN ! if volume is zero, need to initialize the default value
 
@@ -12202,6 +16051,122 @@ END SUBROUTINE nssl_2mom_driver
 
 
 
+      IF ( ipelec .ge. 1 ) THEN
+      DO mgs = 1,ngscnt
+      cionpmxd(mgs) = frac*cionp(mgs)*dtpinv
+      cionnmxd(mgs) = frac*cionn(mgs)*dtpinv
+      
+      if (largeion) then
+       clionpmxd(mgs) = frac*clionp(mgs)*dtpinv
+       clionnmxd(mgs) = frac*clionn(mgs)*dtpinv
+      endif
+      
+      ENDDO
+      ENDIF
+
+      if ( ipelec .gt. 1 ) then
+!
+!  vertical component of e
+!
+      do mgs = 1,ngscnt
+      dezcomp(mgs) = Max(-1.00e5,   &
+     &   Min(elec(igs(mgs),jgs,kgs(mgs)),1.00e5 )) ! Ez is passed (elecsave)
+      end do
+!       write(0,*) 'dezcomp',MAXVAL(dezcomp),MAXLOC(dezcomp),MINVAL(dezcomp),MINLOC(dezcomp)
+!       write(0,*) 'ELEC3',MAXVAL(elec),MAXLOC(elec),MINVAL(elec),MINLOC(elec)
+
+
+!
+!  others...
+!
+      if ( nonigrd .ge. 2 ) then
+      
+      sctem(:) = 0.0
+      
+      do mgs = 1,ngscnt
+!
+!
+!  temperature factor:
+!      if trever = -21: reduces to jayratene
+!      if trever = -10: reduces to takahashi
+!
+      IF (isaund .eq. 1 .or. isaund .eq. 11) THEN
+        trev = trever
+      ELSEIF (isaund .eq. 2 .or. isaund .eq. 12) THEN  
+        ewtmp = 0.5*1.e3*rho0(mgs)*qx(mgs,lc)
+        trev = max(-23.8, (-15.06 * ewtmp - 7.38))  ! Saunders reversal temp.
+      ELSE
+        trev = trever
+      ENDIF
+
+       IF (ftauopt == 2 ) THEN
+! shift the charge function ftau so that zero crossing matches local
+! reversal temperature.
+        IF (temcg(mgs) .le. -7.5) THEN
+          sctem(mgs) =  ftau( temcg(mgs) - 21.0 - trev )
+        ELSE
+          sctem(mgs) = ftau(-7.5 - 21.0 - trev)*(-temcg(mgs)*(1./7.5))
+        ENDIF
+       ELSEIF ( ftauopt == 1 ) THEN
+! do the ziegler/straka shift...
+        IF (temcg(mgs) .lt. 0.0) THEN
+          sctem(mgs) = ftau(max(-25.0,((-21.0)/trev)*temcg(mgs)) )
+        ENDIF
+       
+       ENDIF
+
+!      temele = max(-25.0,((-21.0)/trever)*temcg(mgs))
+!
+!      sctem(mgs)  =
+!     >   (-1.7e-05)*(temele**3)
+!     > + (-3.0e-03)*(temele**2)
+!     > + (-5.0e-02)*(temele**1)
+!     > + ( 1.3e-01)
+!
+!  critical (threshold) liquid water content factor (1.0e-04 kg/m**3)
+!
+      if ( temcg(mgs) .ge. trev ) then
+      dellwc(mgs) = (1000.0)*(rho0(mgs)*qx(mgs,lc)-(1.0e-04))
+      end if
+      if ( temcg(mgs) .lt. trev ) then
+      dellwc(mgs) = (1000.0)*(rho0(mgs)*qx(mgs,lc))
+      end if
+      if ( qx(mgs,lc) .lt. 1.e-6 ) dellwc(mgs) = 0.0
+!
+! parabolic function to reduce charging at low temperature
+!
+!      IF ( temcg(mgs) .lt. -30 .and. temcg(mgs) .gt. -43.0 ) THEN
+!        sctem(mgs) = sctem(mgs)*(1.0 - ((temcg(mgs)+30.0)/(43.0 - 30.0))**2)
+      
+      IF ( isctemopt == 1 ) THEN
+        IF ( temcg(mgs) .lt. -30 .and. temcg(mgs) .gt. -40.0 ) THEN
+          sctem(mgs) = sctem(mgs)*(1.0 - ((temcg(mgs)+30.0)/(40.0 - 30.0))**2)
+!        ELSEIF ( temcg(mgs) .le. -43.0 ) THEN
+        ELSEIF ( temcg(mgs) .le. -40.0 ) THEN
+          sctem(mgs) = 0.0
+        END IF
+      ELSE
+        IF ( temcg(mgs) >= tcc ) THEN
+          fac = 1.0
+        ELSEIF ( temcg(mgs) < tcc .and. temcg(mgs) .gt. nic_min_temp ) THEN
+!         fac = 1.0 - ((temcg+30.0)/(-tmin - 30.0))**2
+! Cosine funtion roll-off
+          fac = 0.5 *(1. + Cos(pi *(((temcg(mgs) - tcc)/(-nic_min_temp + tcc)))))
+        ELSE
+          fac = 0.0
+        END IF
+        
+        sctem(mgs) = fac*sctem(mgs)
+      ENDIF
+      
+
+      end do
+      end if
+!
+      end if
+!
+
+
 
     ! default factors between mean volume and maximum mass volume
       maxmassfac(lc) = ( (2. + 3.*(1. + xnu(lc)) )**3/( 3.*(1. + xnu(lc)) ) )
@@ -12263,6 +16228,7 @@ END SUBROUTINE nssl_2mom_driver
 !
       if (ndebug .gt. 0 ) write(0,*) 'ICEZVD_GS: Set collection efficiencies'
 !
+       exy(:,:,:) = 0.0
       do mgs = 1,ngscnt
 !
 !
@@ -12653,6 +16619,7 @@ END SUBROUTINE nssl_2mom_driver
           ENDIF
 !          ehs(mgs) = ehscnv(mgs)*Min(1.0, Max(0., xdn(mgs,lh) - xdnmn(lh)*1.2)/xdnmn(lh)  ) ! shut off qhacs as graupel goes to lowest density
           ehs(mgs) = ehscnv(mgs)*Min(1.0, Max(0.0,xdn(mgs,lh) - 300.)/300.  ) ! shut off qhacs as graupel goes to low density
+!          ehs(mgs) = ehscnv(mgs) ! *Min(1.0, Max(0.0,xdn(mgs,lh) - 300.)/300.  ) ! shut off qhacs as graupel goes to low density
           ehs(mgs) = Min(ehs(mgs),ehsmax)
           IF ( qx(mgs,lc) < qxmin(lc) ) ehs(mgs) = 0.0
         end if
@@ -14189,7 +18156,7 @@ END SUBROUTINE nssl_2mom_driver
          cautn(mgs) = Min(ccmxd(mgs),   &
      &      ((alpha(mgs,lc)+2.)/(alpha(mgs,lc)+1.))*aa1*cx(mgs,lc)**2*xv(mgs,lc)**2)
          cautn(mgs) = Max( 0.0d0, cautn(mgs) )
-         IF ( rb(mgs) .le. 7.51d-6 ) THEN
+         IF ( rb(mgs) .le. 7.51d-6 .or. dmrauto == -1) THEN
            t2s = 1.d30
 !           cautn(mgs) = 0.0
          ELSE
@@ -15004,6 +18971,461 @@ END SUBROUTINE nssl_2mom_driver
 
 
 
+      IF ( ipelec >= 1 .or. idoniconly ) THEN
+!
+!  initialize rates to zero
+!
+      scxacy(:,:,:) = 0.0
+
+      scsacw(:) = 0.0
+      scsaci(:) = 0.0
+      IF ( lis > 1 ) scsacis(:) = 0.0
+      scsacr(:) = 0.0
+
+      schacw(:) = 0.0
+      schaci(:) = 0.0
+      IF ( lis > 1 ) schacis(:) = 0.0
+      schacs(:) = 0.0
+      schacr(:) = 0.0
+
+!      IF ( lhl .gt. 1 ) THEN
+      schlacw(:) = 0.0
+      schlaci(:) = 0.0
+      IF ( lis > 1 ) schlacis(:) = 0.0
+      schlacs(:) = 0.0
+      schlacr(:) = 0.0
+!      ENDIF
+
+      
+      ENDIF
+
+
+      altelecfac = 1.0
+      elecfac = 1.0
+
+
+
+      IF ( ipelec .ge. 2 .or. idoniconly ) THEN
+
+!      write(*,*) 'icezvd_gs: time_real, elec_on_time = ',time_real,elec_on_time
+      IF ( jyslab.gt.(jds+jchgs) .and. jyslab.lt.(jde-jchgn) ) THEN
+      
+
+      
+      
+      DO mgs = 1,ngscnt
+
+
+      exy(mgs,ls,lc) = esw(mgs)
+      exy(mgs,ls,li) = esi(mgs)
+      exy(mgs,lh,lc) = ehw(mgs)
+      exy(mgs,lh,li) = ehi(mgs)
+      exy(mgs,lh,ls) = ehs(mgs)
+      IF ( lis > 1 ) exy(mgs,lh,lis) = ehis(mgs)
+
+      IF ( lhl .gt. 1 ) THEN
+        exy(mgs,lhl,lc) = ehlw(mgs)
+        exy(mgs,lhl,li) = ehli(mgs)
+        exy(mgs,lhl,ls) = ehls(mgs)
+        IF ( lis > 1 ) exy(mgs,lhl,lis) = ehlis(mgs)
+      ENDIF
+
+
+      cxacy(mgs,ls,lc) = csacw(mgs)
+      cxacy(mgs,lh,lc) = chacw(mgs)
+      
+         ! use ni as the fraction of ice crystals greater than some given diameter
+         ni = 1.0
+         nis = 1.0
+         IF ( cidiamin > 0.0 ) THEN
+           ni = Exp(- (cidiamin/xdia(mgs,li,1))**3 )
+           IF ( lis > 1 ) nis = Exp(- (cidiamin/xdia(mgs,lis,1))**3 )
+         ENDIF
+
+      
+      IF ( .true. ) THEN
+      cxacy(mgs,ls,li) = ni*csaci0(mgs)
+      cxacy(mgs,lh,li) = ni*chaci0(mgs)
+      cxacy(mgs,lh,ls) = chacs0(mgs)
+      IF ( lis > 1 ) cxacy(mgs,lh,lis) = nis*chacis0(mgs)
+      ELSE
+      cxacy(mgs,ls,li) = csaci(mgs) ! csaci0(mgs)
+      cxacy(mgs,lh,li) = chaci(mgs) ! chaci0(mgs)
+      cxacy(mgs,lh,ls) = chacs(mgs) ! chacs0(mgs)
+      ENDIF
+
+!         IF ( igs(mgs) == 21 .and. temg(mgs) < 273. .and. temg(mgs) > 233. ) THEN
+!           write(0,*) 'k,ni,chaci0 = ',kgs(mgs),ni,chaci0(mgs),cxacy(mgs,lh,li)
+!         ENDIF
+
+      IF ( lhl .gt. 1 ) THEN
+        cxacy(mgs,lhl,lc) = chlacw(mgs)
+        cxacy(mgs,lhl,li) = ni*chlaci0(mgs)
+        cxacy(mgs,lhl,ls) = chlacs0(mgs)
+        IF ( lis > 1 ) cxacy(mgs,lhl,lis) = nis*chlacis0(mgs)
+      ENDIF
+
+      ENDDO
+
+
+!
+!  First do loop between large ice and small ice
+!
+      DO il=ls,lhab ! loop through all ice habits
+      DO ic=li,ls ! loop through all mixed phase particles
+
+!      IF ( iexy(il,ic) .eq. 1 .and. il .ne. ic ) THEN ! prevent snow-snow
+      IF ( iexy(il,ic) .eq. 1  ) THEN
+
+      do mgs = 1,ngscnt
+
+!        IF (qx(mgs,il) .gt. qxmin(il)  .and. qx(mgs,ic) .gt. qxmin(ic)  .and. exy(mgs,il,ic) .gt. 0.0) THEN  ! make sure there are particle and that they do not stick
+        IF (qx(mgs,il) .gt. qxmin(il)  .and. qx(mgs,ic) .gt. qxmin(ic) ) THEN  ! make sure there are particle and that they do not stick
+        IF ( temg(mgs) .lt. tfr .and. temg(mgs) .gt. thnuc ) THEN  ! 0.0=tfreezing and -38C= assumed T for homogeneous ice nucleation
+!        IF ( .true. ) THEN
+        IF ( iremoveqwfrz == 1 ) THEN
+          qcwtmp(mgs) = Max(0.0, qx(mgs,lc) - dtp*qwfrz(mgs) )
+        ELSE
+          qcwtmp(mgs) = qx(mgs,lc)
+        ENDIF
+
+!  del cglarge
+!
+!
+      IF (nonigrd .eq. -1 ) THEN ! {
+
+       vt = vtxbar(mgs,il,1) - vtxbar(mgs,ic,1)
+       CALL takax(isaund,ntem,nlwc,takalu,temcg(mgs),qcwtmp(mgs),vt,   &
+     &     xdia(mgs,ic,1),rho0(mgs),ftelwc,exy(mgs,il,lc),qx(mgs,lr),rarfac)
+       scxacy(mgs,il,ic) = ftelwc
+
+        if ( scxacy(mgs,il,ic) .gt. 0.0 ) then
+          scxacy(mgs,il,ic) = min(delqxxa(ic),scxacy(mgs,il,ic))
+        end if
+        if ( scxacy(mgs,il,ic) .lt. 0.0 ) then
+          scxacy(mgs,il,ic) = max(delqnxa(ic),scxacy(mgs,il,ic))
+        end if
+      ! }
+      ELSEIF ( nonigrd .eq. 1 .or. nonigrd .eq. 0 ) THEN ! {
+
+      IF (nonigrd .eq. 0) THEN
+
+      qconkq = 0.0
+      qconm = 1.0
+      qconn = 1.0
+      ftelwc = 0.0
+
+      vt = vtxbar(mgs,il,1) - vtxbar(mgs,lc,1)
+      call saundx(isaund,temcg(mgs),qcwtmp(mgs),exy(mgs,il,lc),vt,xdia(mgs,ic,1),   &
+     &   rho0(mgs),qsign,ftelwc,qconkq,qconm,qconn,idelq,rarfac)
+!      IF ( ftelwc /= 0.0 ) THEN
+!      IF ( igs(mgs) == 42 .and. kgs(mgs) == 43 ) THEN
+!      write(0,*) 'called saundx: ',igs(mgs),kgs(mgs),il,lc,isaund,temcg(mgs),qcwtmp(mgs),exy(mgs,il,lc),vt,xdia(mgs,ic,1),   &
+!     &   rho0(mgs),qsign,ftelwc,qconkq,qconm,qconn,idelq,rarfac
+!      ENDIF
+      
+!      IF ( lis > 1 .and. ic == lis .and. il == lh ) THEN
+!       IF ( cxacy(mgs,il,ic) > 1. .and. qcwtmp(mgs) > 0.05e-3 ) THEN
+!       write(0,*) 'called saundx: ',igs(mgs),kgs(mgs),il,lc,isaund,temcg(mgs),qcwtmp(mgs),exy(mgs,il,lc),vt,xdia(mgs,ic,1),   &
+!     &   rho0(mgs),qsign,ftelwc,qconkq,qconm,qconn,idelq,rarfac
+!       ENDIF
+!      ENDIF
+
+      ELSE
+        vt = vtxbar(mgs,il,1) - vtxbar(mgs,lc,1)
+        
+      call saundy(isaund,temcg(mgs),qcwtmp(mgs),rarx(mgs,il),vt,xdia(mgs,ic,1),   &
+     &   rho0(mgs),qsign,ftelwc,qconkq,qconm,qconn,idelq)
+
+!      call saund(temcg(mgs),qcwtmp(mgs),eglw(mgs),xdia(mgs,ic,1),
+!     >     rho0(mgs),qsign,ftelwc,qconkq,qconm,qconn,idelq)
+      ENDIF
+
+      cfce15 = 1.0e-15
+      scxacy(mgs,il,ic) = qconkq*(xdia(mgs,ic,1)**qconm)   &
+     &  *((abs(vtxbar(mgs,il,1)-vtxbar(mgs,ic,1)))**qconn)   &
+     &  *ftelwc*cfce15
+      
+      tmp = scxacy(mgs,il,ic)
+      if ( scxacy(mgs,il,ic) .gt. 0.0 ) then ! {
+      scxacy(mgs,il,ic) = min(delqxxa(ic),scxacy(mgs,il,ic))
+      end if
+      if ( scxacy(mgs,il,ic) .lt. 0.0 ) then
+      scxacy(mgs,il,ic) = max(delqnxa(ic),scxacy(mgs,il,ic))
+      
+!      IF ( ny <= 2 .and. ( il == lh .or. il == lf ) .and. ic == li ) THEN
+!       IF ( igs(mgs) == 21 ) THEN
+!         IF ( il == lh ) THEN
+!         write(0,*) 'lh with li: k = ',kgs(mgs)
+!         ELSE
+!         write(0,*) 'lf with li: k = ',kgs(mgs)
+!         ENDIF
+!         write(0,*) 'scxacy,vt,xdia = ',scxacy(mgs,il,ic),vt,xdia(mgs,ic,1)
+!       ENDIF
+!      ENDIF
+      
+      end if ! }
+      end if ! }
+!
+      if ( nonigrd .ge. 2 ) then
+      IF ( dellwc(mgs) /= 0.0 ) THEN
+      scxacy(mgs,il,ic) =    &
+     & ( (7.3)*rgard1   &
+     & * dellwc(mgs)*sctem(mgs)*(xdia(mgs,ic,1)**4)   &
+     & * (abs(vtxbar(mgs,il,1)-vtxbar(mgs,ic,1))**3) )
+      ELSE
+       scxacy(mgs,il,ic) = 0.0
+      ENDIF
+      
+      if ( scxacy(mgs,il,ic) .gt. 0.0 ) then
+      scxacy(mgs,il,ic) = min(delqxxa(ic),scxacy(mgs,il,ic))
+      end if
+      if ( scxacy(mgs,il,ic) .lt. 0.0 ) then
+      scxacy(mgs,il,ic) = max(delqnxa(ic),scxacy(mgs,il,ic))
+      end if
+      end if
+!
+      if ( nonigrd .eq. 3 ) then
+      if ( scxacy(mgs,il,ic) .gt. 0 )  scxacy(mgs,il,ic) = delqxxa(ic)
+      if ( scxacy(mgs,il,ic) .lt. 0 )  scxacy(mgs,il,ic) = delqnxa(ic)
+      end if
+!
+!      sxxacy(mgs,il,ic) = scxacy(mgs,il,ic)
+!
+! Formula 7 in M05 to get total space charge per collisions within a grid box
+      IF ( .true. ) THEN
+      tmp = scxacy(mgs,il,ic)
+      scxacy(mgs,il,ic) =   &
+     &  cxacy(mgs,il,ic)*ecollmx*(1.0-exy(mgs,il,ic))*scxacy(mgs,il,ic) !   &
+!     &  *exy(mgs,il,ic)*(1./(exy(mgs,il,ic)+eps))
+!      IF ( igs(mgs) == 43 .and. kgs(mgs) == 47 ) THEN
+!      write(0,*) 'scxacy: ',igs(mgs),kgs(mgs),il,ic,isaund,tmp,scxacy(mgs,il,ic),temcg(mgs), &
+!     & qcwtmp(mgs),exy(mgs,il,ic),vt,xdia(mgs,ic,1),   &
+!     &   rho0(mgs),qsign,ftelwc,qconkq,qconm,qconn,idelq,rarfac
+!      ENDIF
+      ELSE
+      scxacy(mgs,il,ic) =   &
+     &  cxacy(mgs,il,ic)*Min(ecollmx,1.0-exy(mgs,il,ic))*scxacy(mgs,il,ic)   &
+     &  *(1./(exy(mgs,il,ic)+eps))
+      ENDIF
+
+!      IF ( ny <= 2 .and. ( il == lh .or. il == lf ) .and. ic == li ) THEN
+!       IF ( igs(mgs) == 21 ) THEN
+!         IF ( il == lh ) THEN
+!         write(0,*) '2 lh with li: k = ',kgs(mgs)
+!         ELSE
+!         write(0,*) '2 lf with li: k = ',kgs(mgs)
+!         ENDIF
+!         write(0,*) 'scxacy,cxacy,1-exy = ',scxacy(mgs,il,ic),cxacy(mgs,il,ic),(1.0-exy(mgs,il,ic))
+!       ENDIF
+!      ENDIF
+
+     
+      IF ( Abs( scxacy(mgs,il,ic) ) .gt. scxacymax ) THEN
+           scxacy(mgs,il,ic) = Min(scxacymax, Max( -scxacymax, scxacy(mgs,il,ic) ) )
+      ENDIF
+!
+      end if ! } temperture allows mixed phase
+
+!
+! charging with no liquid water (Mitzeva).  Only allow when ssi >= 1, i.e., for the case of deposition growth
+!
+      IF ( nic_noliq .ne. 0 .and. scxacy(mgs,il,ic) .eq. 0.0 .and. temg(mgs) .lt. tfr ) THEN  ! will overwrite pre-existing charge sep rate if no scxacy test
+        IF ( ssi(mgs) .ge. 1.0 ) THEN
+
+         vt = vtxbar(mgs,il,1) - vtxbar(mgs,ic,1)
+        
+         call saundmst(temcg(mgs),ssi(mgs),vt,xdia(mgs,ic,1),rho0(mgs),   &
+     &     qsign,ftelwc,qcwtmp(mgs),exy(mgs,il,lc),   &
+     &     qconkq,qconm,qconn,idelq,rarfac)
+
+!      subroutine saundmst(temcg,ssi(mgs),vt,awdia,rho0,
+!                          qsign,ftrar,qcw,exw,
+!                          qconkq,qconm,qconn,idelq,rarfac)
+
+        cfce15 = 1.0e-15
+        ftelwc = qsign*qc_noliq ! qmst
+      
+        scxacy(mgs,il,ic) = qconkq*(xdia(mgs,ic,1)**qconm)   &
+     &                            *((abs(vt))**qconn)*ftelwc*cfce15     ! MST, eqn 1
+        if ( scxacy(mgs,il,ic) .gt. 0.0 ) then
+         scxacy(mgs,il,ic) = min(delqxxa(ic),scxacy(mgs,il,ic))
+        end if
+        if ( scxacy(mgs,il,ic) .lt. 0.0 ) then
+         scxacy(mgs,il,ic) = max(delqnxa(ic),scxacy(mgs,il,ic))
+        end if
+
+!        scxacy(mgs,il,ic) =   &
+!     &    cxacy(mgs,il,ic)*Min(ecollmx,1.0-exy(mgs,il,ic))*scxacy(mgs,il,ic)   &
+!     &    *(1./(exy(mgs,il,ic)+eps))
+        scxacy(mgs,il,ic) =   &
+     &    cxacy(mgs,il,ic)*ecollmx*(1.0-exy(mgs,il,ic))*scxacy(mgs,il,ic) 
+
+          
+        IF ( ny .eq. 2 .and. scxacy(mgs,il,ic) .ne. 0.0 ) THEN
+           cntnic_noliq = cntnic_noliq + 1
+           q_noliqmn = Min( q_noliqmn, scxacy(mgs,il,ic) )
+           q_noliqmx = Max( q_noliqmx, scxacy(mgs,il,ic) )
+           
+           IF ( il == ls .and. ic == li ) THEN
+             scsacimn = Min( scsacimn, scxacy(mgs,il,ic) )
+             scsacimx = Max( scsacimx, scxacy(mgs,il,ic) )
+           ENDIF
+           
+        ENDIF
+
+        ENDIF !ssi
+
+      ENDIF !nic_noliq
+
+      end if ! } qx(mgs,il) .gt. qxmin(il) .and. qx(mgs,ic) .gt. qxmin(ic)
+
+!
+      end do !mgs
+      
+      ENDIF ! iexy(il,ic) .eq. 1 .and. il .ne. ic 
+      
+      ENDDO !ic
+      ENDDO !il
+
+!
+!  End of ice-ice loop
+!
+
+!
+! Loop for graupel-droplet inductive charging
+!  Mansell et al 2005, adapted from Ziegler et al 1991
+
+      IF ( erbnd .gt. 0.0 .and. fdgt .gt. 0.0 .and. ipelec .ge. 3 ) THEN
+      
+      DO il=ls,lhab
+!
+      IF ( iexy(il,lc) .eq. 1 ) THEN
+
+      if ( ndebug .ge. 1 ) write(iunit,*) 'elec 19'
+
+      do mgs = 1,ngscnt
+!
+      if ( qx(mgs,il) .gt. qxmin(il) .and. qcwtmp(mgs) .gt. qxmin(lc)    &
+     &     .and. exy(mgs,il,lc) .gt. 0.0 .and. cx(mgs,il) > 1.e-6 ) THEN
+      IF ( temg(mgs) .gt. tindmn .and. temg(mgs) .lt. tindmx ) then
+!
+      scxacy(mgs,il,lc) =  &
+     &  0.125*pi**3*exy(mgs,il,lc)*erbnd*fdgt*(cx(mgs,il))   &
+     &  *cx(mgs,lc)*vtxbar(mgs,il,1)*6.0/gf4p5*(xdia(mgs,lc,1)**2)   &
+     &  *( pi*eperao*costhe*dezcomp(mgs)   &
+     &      *gf3p5*(xdia(mgs,il,1)**2)   &
+     &     - (1.0/3.0)*gf1p5*scx(mgs,il)/cx(mgs,il) ) ! must use from previous time step
+        
+        
+!        scxacy(mgs,il,lc) = 0.0
+        
+!    !     makes sure scxacy does nto go over |delqxw|.
+
+      if ( scxacy(mgs,il,lc) .gt. 0.0 ) then
+        scxacy(mgs,il,lc) = min(delqxw,scxacy(mgs,il,lc))
+      elseif ( scxacy(mgs,il,lc) .lt. 0.0 ) then
+!        IF ( scxacy(mgs,il,lc) < delqnw ) THEN
+!          write(0,*) 'big inductive: il = ',il,scxacy(mgs,il,lc),temcg(mgs),kgs(mgs)
+!          write(0,*) 'cx,vtxbar,scx = ',cx(mgs,il),vtxbar(mgs,il,1),scx(mgs,il),xdia(mgs,lc,1)
+!        ENDIF
+        scxacy(mgs,il,lc) = max(delqnw,scxacy(mgs,il,lc))
+      end if
+
+!       if (abs(scxacy(mgs,il,lc)).gt.0.) write(0,*) 'GT0',cx(mgs,il),cx(mgs,lc),vtxbar(mgs,il,1),xdia(mgs,lc,1),dezcomp(mgs),xdia(mgs,il,1),scx(mgs,il) 
+
+      ELSE
+
+       scxacy(mgs,il,lc) = 0.0
+
+      end if
+      ENDIF
+!
+!      end if
+!      end if
+
+      end do  ! mgs
+
+      ENDIF
+
+      ENDDO  ! il
+
+      ENDIF ! erbnd
+
+     ENDIF ! boundary check on y
+
+!      if (MAXVAL(scxacy(:,ls,lc)).gt.0.) write(0,*)'dezcomp',MAXVAL(dezcomp),MAXLOC(dezcomp),MINVAL(dezcomp),MINLOC(dezcomp)
+!      if (MAXVAL(scxacy(:,ls,lc)).gt.0.) write(0,*) 'scxacy(mgs,ls,lc)',MAXVAL(scxacy(:,ls,lc)),MAXLOC(scxacy(:,ls,lc)),MINVAL(scxacy(:,ls,lc)),MINLOC(scxacy(:,ls,lc))
+
+
+!  SET INDUC to ZERO:
+
+!      DO il=ls,lhab
+!      DO mgs = 1,ngscnt
+!      if (abs(scxacy(mgs,il,lc)).le.delqxw) scxacy(mgs,il,lc)=0.
+!      ENDDO
+!      ENDDO
+
+
+      DO mgs = 1,ngscnt
+
+      IF ( igs(mgs)+its-1.gt.(ids+ichgw) .and. igs(mgs)+its-1.lt.(ide-ichge)  ) THEN
+      
+      scsacw(mgs) = elecfac*scxacy(mgs,ls,lc)
+      scsaci(mgs) = elecfac*scxacy(mgs,ls,li)
+      scsacr(mgs) = elecfac*scxacy(mgs,ls,lr)
+
+      schacw(mgs) = elecfac*scxacy(mgs,lh,lc)
+      schaci(mgs) = elecfac*scxacy(mgs,lh,li)
+      IF ( lis > 1 ) schacis(mgs) = elecfac*scxacy(mgs,lh,lis)
+!      IF ( lis > 1 ) THEN
+!        IF ( qx(mgs,lis) > qxmin(lis) .and. qx(mgs,lh) > qxmin(lh) .and. qcwtmp(mgs) > qxmin(lc) ) THEN
+!          write(0,*) 'schacis,i,j,k= ',schacis(mgs),igs(mgs)+ixbeg-1,jgs+jybeg-1,kgs(mgs),qx(mgs,lis),qx(mgs,lh),chacis0(mgs),cxacy(mgs,lh,lis),iexy(lh,lis)
+!        ENDIF
+!      ENDIF
+      schacs(mgs) = elecfac*scxacy(mgs,lh,ls)
+      schacr(mgs) = elecfac*scxacy(mgs,lh,lr)
+      
+      
+      IF ( lhl .gt. 1 ) THEN
+      schlacw(mgs) = elecfac*scxacy(mgs,lhl,lc)
+      schlaci(mgs) = elecfac*scxacy(mgs,lhl,li)
+      IF ( lis  > 1 ) schlacis(mgs) = elecfac*scxacy(mgs,lhl,lis)
+      schlacs(mgs) = elecfac*scxacy(mgs,lhl,ls)
+      schlacr(mgs) = elecfac*scxacy(mgs,lhl,lr)
+      ENDIF
+
+      
+      ELSE
+      
+      scsacw(mgs) = 0.0
+      scsaci(mgs) = 0.0
+      scsacr(mgs) = 0.0
+
+      schacw(mgs) = 0.0
+      schaci(mgs) = 0.0
+      IF ( lis > 1 ) schacis(mgs) = 0.0
+      schacs(mgs) = 0.0
+      schacr(mgs) = 0.0
+      
+      IF ( lhl .gt. 1 ) THEN
+      schlacw(mgs) = 0.0
+      schlaci(mgs) = 0.0
+      IF ( lis > 1 ) schlacis(mgs) = 0.0
+      schlacs(mgs) = 0.0
+      schlacr(mgs) = 0.0
+      ENDIF
+
+
+      
+      ENDIF ! x boundary check
+
+      ENDDO  ! ngscnt
+
+
+      ENDIF  ! ipelec >= 1
+
+
 !
 !  Ventilation coeficients
 !
@@ -15322,6 +19744,7 @@ END SUBROUTINE nssl_2mom_driver
       chmlr(:) = 0.0
       chmlrr(:) = 0.0
       chlmlr(:) = 0.0
+      chlfmlr(:) = 0.0
 !      chlmlrsave(:) = 0.0
 !      qhlmlrsave(:) = 0.0
 !      chlsave(:) = 0.0
@@ -16302,6 +20725,12 @@ END SUBROUTINE nssl_2mom_driver
       chdpv(mgs) = 0.0
 !      chsbv(mgs) = 0.0
 
+      IF ( ipelec > 0 ) THEN
+      schacs(mgs) = 0.0
+      schaci(mgs) = 0.0
+      IF ( lis > 1 ) schacis(mgs) = 0.0
+      schacw(mgs) = 0.0
+      ENDIF
 ! collection efficiency modification
 
       IF ( ehi(mgs) .gt. 0.0 ) THEN
@@ -16337,6 +20766,11 @@ END SUBROUTINE nssl_2mom_driver
 !      chlsbv(mgs) = 0.0
 
 
+      IF ( ipelec > 0 ) THEN
+      schlacs(mgs) = 0.0
+      schlaci(mgs) = 0.0
+      schlacw(mgs) = 0.0
+      ENDIF
 
 
         IF ( lvol(lhl) .gt. 1  .and. .not. mixedphase ) THEN
@@ -17704,7 +22138,9 @@ END SUBROUTINE nssl_2mom_driver
      &  + chsbv(mgs)   &
      &  - il5(mgs)*chlcnh(mgs) &
      &  - cscnh(mgs)
+
       end do
+
 
 
 !
@@ -17919,10 +22355,8 @@ END SUBROUTINE nssl_2mom_driver
 !        qwfrzp(mgs)  = frac*qwfrzp(mgs)
 !        qwctfzp(mgs) = frac*qwctfzp(mgs)
         qwfrzc(mgs)  = frac*qwfrzc(mgs)
-        qwfrzis(mgs)  = frac*qwfrzis(mgs)
         qwfrz(mgs)  = frac*qwfrz(mgs)
         qwctfzc(mgs) = frac*qwctfzc(mgs)
-        qwctfzis(mgs) = frac*qwctfzis(mgs)
         qwctfz(mgs) = frac*qwctfz(mgs)
         qracw(mgs)   = frac*qracw(mgs)
         qsacw(mgs)   = frac*qsacw(mgs)
@@ -18590,10 +23024,9 @@ END SUBROUTINE nssl_2mom_driver
       write(iunit,*)   ' Conc:'
       write(iunit,*)   pccii(mgs),pccid(mgs)
       write(iunit,*)   il5(mgs),cicint(mgs)
-      write(iunit,*)   cwacii(mgs),cwfrzc(mgs),cwctfzc(mgs)
+      write(iunit,*)   cwfrzc(mgs),cwctfzc(mgs)
       write(iunit,*)   cicichr(mgs)
       write(iunit,*)   chmul1(mgs)
-      write(iunit,*)   cfmul1(mgs)
       write(iunit,*)   chlmul1(mgs)
       write(iunit,*)   csmul(mgs)
 !
@@ -18607,7 +23040,6 @@ END SUBROUTINE nssl_2mom_driver
       write(iunit,*)   -il5(mgs)*qiacw(mgs)
       write(iunit,*)   -il5(mgs)*qwfrzc(mgs)
       write(iunit,*)   -il5(mgs)*qwctfzc(mgs)
-      write(iunit,*)   -il5(mgs)*qwctfzis(mgs)
 !      write(iunit,*)   -il5(mgs)*qwfrzp(mgs)
 !      write(iunit,*)   -il5(mgs)*qwctfzp(mgs)
       write(iunit,*)   -il5(mgs)*qiihr(mgs)
@@ -18656,7 +23088,6 @@ END SUBROUTINE nssl_2mom_driver
       write(iunit,*)        -qhlacr(mgs)
       write(iunit,*)        qrcev(mgs)
       write(iunit,*)       'pqrwd = ', pqrwd(mgs) 
-      write(iunit,*)       'fhw, fhlw = ',fhw(mgs),fhlw(mgs)
       write(iunit,*)        'qrzfac = ', qrzfac(mgs)
 !
       
@@ -18845,6 +23276,938 @@ END SUBROUTINE nssl_2mom_driver
       ENDIF
       end do
 
+
+
+!  production of space charge ! use values from previous time step
+!
+!
+!
+!  space charge production
+!  do transfer during conversion
+!  accretion, etc
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      fscrw(mgs) = 0.0
+      if ( qx(mgs,lr) .gt. qxmin(lr) ) then
+      fscrw(mgs) = scx(mgs,lr)/qx(mgs,lr)
+!      if (abs(fscrw(mgs)).gt.1) write(0,*) 'fscrw(mgs),scx(mgs,lr),qx(mgs,lr)=',fscrw(mgs),scx(mgs,lr),qx(mgs,lr)
+      end if
+      end do
+      end if
+
+!
+!  space charge production
+!  do transfer during conversion
+!  accretion, etc
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      fsccw(mgs) = 0.0
+      if ( qx(mgs,lc) .gt. qxmin(lc) ) then
+      fsccw(mgs) = scx(mgs,lc)/qx(mgs,lc)
+      end if
+      end do
+      end if
+
+!
+!  space charge production
+!  do transfer during conversion
+!  accretion, etc
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      fscci(mgs) = 0.0
+      if ( qx(mgs,li) .gt. qxmin(li) ) then
+      fscci(mgs) = scx(mgs,li)/qx(mgs,li)
+      end if
+      end do
+      end if
+
+      ! ice spheres
+      fscis(:) = 0.0
+      IF ( lis > 1 ) THEN
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      if ( qx(mgs,lis) .gt. qxmin(lis) ) then
+      fscis(mgs) = scx(mgs,lis)/qx(mgs,lis)
+      end if
+      end do
+      end if
+      ENDIF
+
+!
+!  space charge production
+!  do transfer during conversion
+!  accretion, etc
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      fscsw(mgs) = 0.0
+      if ( qx(mgs,ls) .gt. qxmin(ls) ) then
+      fscsw(mgs) = scx(mgs,ls)/qx(mgs,ls)
+      end if
+      end do
+      end if
+
+!
+!  space charge production
+!  do transfer during conversion
+!  accretion, etc
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      fschw(mgs) = 0.0
+      if ( qx(mgs,lh) .gt. qxmin(lh) ) then
+      fschw(mgs) = scx(mgs,lh)/qx(mgs,lh)
+      end if
+      end do
+      end if
+
+!
+!  space charge production
+!  do transfer during conversion
+!  accretion, etc
+!
+      fschl(:) = 0.
+      if ( lhl .gt. 1 .and. ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      if ( qx(mgs,lhl) .gt. qxmin(lhl) ) then
+      fschl(mgs) = scx(mgs,lhl)/qx(mgs,lhl)
+      end if
+      end do
+      end if
+
+
+      schmlr(:) = 0.0
+      scsmlr(:) = 0.0
+      schshr(:) = 0.0
+      scsshr(:) = 0.0
+      scsdep(:) = 0.0
+
+!
+!
+!
+!SSSS
+!
+!  Charge production from mass transfer
+!
+!  Cloud ice
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      psccimi(mgs) =    &
+     &   il5(mgs)*(fsccw(mgs)*qiacw(mgs)+fsccw(mgs)*qwfrzc(mgs)   &
+     &  +fsccw(mgs)*qwctfzc(mgs)+fsccw(mgs)*qicichr(mgs))   &
+!     >  +il5(mgs)*fscci(mgs)*qwacii(mgs))   &
+     &  +il5(mgs)*fscrw(mgs)*(1. - ifrzs)*qrfrzs(mgs)   &
+     &  +fschw(mgs)*qhmul1(mgs)   &
+     &  +fschl(mgs)*qhlmul1(mgs)  &
+     &  +fscsw(mgs)*qsmul(mgs)
+      psccimd(mgs) =    &
+     &   il5(mgs)*(-fscci(mgs)*qscni(mgs)   & ! -fscci(mgs)*qwaci(mgs)   &
+     &  -fscci(mgs)*qsaci(mgs))  -fscci(mgs)*qraci(mgs)   &
+     &  -fscci(mgs)*qhaci(mgs) -fscci(mgs)*qhlaci(mgs)
+      end do
+      end if
+
+!  ice spheres
+!
+      IF ( lis > 1 ) THEN
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      pscismi(mgs) =    &
+     &   il5(mgs)*(fsccw(mgs)*qwfrzis(mgs)   &
+     &  +fsccw(mgs)*qwctfzis(mgs)) !  &
+!     &  +fschw(mgs)*qhmul1(mgs)   &
+!     &  +fschl(mgs)*qhlmul1(mgs)  &
+!     &  +fscsw(mgs)*qsmul(mgs)
+      pscismd(mgs) =  0.0   &
+!     &   il5(mgs)*(-fscci(mgs)*qscni(mgs)   & ! -fscci(mgs)*qwaci(mgs)   &
+!     &  -fscci(mgs)*qsacis(mgs)) & ! -fscci(mgs)*qraci(mgs)   &
+     &  -fscis(mgs)*qhacis(mgs) -fscis(mgs)*qhlacis(mgs)
+      end do
+      end if
+      ENDIF
+
+
+!
+!
+!  Cloud water
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      psccwmi(mgs) = 0.0
+      psccwmd(mgs) =    &
+     &  -fsccw(mgs)*qracw(mgs)-fsccw(mgs)*qrcnw(mgs)   &
+     &  +il5(mgs)*(-fsccw(mgs)*qiacw(mgs)   &
+     &  -fsccw(mgs)*qwctfz(mgs)    & ! -fsccw(mgs)*qwctfzp(mgs)
+     &  -fsccw(mgs)*qwfrz(mgs) )   & ! -fsccw(mgs)*qwfrzp(mgs))
+     &  -fsccw(mgs)*qiihr(mgs)   &
+     &  -fsccw(mgs)*qsacw(mgs) -fsccw(mgs)*qhacw(mgs)  -fsccw(mgs)*qhlacw(mgs)
+      end do
+      end if
+
+      mixedphasefac = 1.0
+      IF ( mixedphase ) mixedphasefac = 0.0
+!
+!  Snow
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      pscswmi(mgs) =    &
+     &  +il5(mgs)*(fscci(mgs)*qscni(mgs)+fscci(mgs)*qsaci(mgs)   &
+     &  +fscrw(mgs)*ifrzs*qrfrzs(mgs))   &
+     &  +fsccw(mgs)*qsacw(mgs)+fscrw(mgs)*qsacr(mgs)
+      pscswmd(mgs) =    &
+!     >  -fscsw(mgs)*qracs(mgs) ! -fscsw(mgs)*qwacs(mgs)   &
+     &  - fscsw(mgs)*qhacs(mgs) - fscsw(mgs)*qhlacs(mgs)   &
+     &  +(1-il5(mgs))*fscsw(mgs)*qsmlr(mgs)*mixedphasefac &
+!     &   + fscsw(mgs)*qsshr(mgs) &
+     &  -fscsw(mgs)*qsmul(mgs)  &
+!       + fscsw(mgs)*max(0.0,qscev(mgs))  &
+        + fscsw(mgs)*min(0.0,qscev(mgs))
+
+      fscsw2(mgs) = 0.0
+      tmp =  qx(mgs,ls) + dtp*(pqswi(mgs) + pqswd(mgs) - qsshr(mgs)) ! should this add back the shed rain mass? probably!
+      IF ( tmp > qxmin(ls) .and. qsshr(mgs) < 0.0 ) THEN
+        chgtmp = scx(mgs,ls) + dtp*(pscswmi(mgs) + pscswmd(mgs))
+        fscsw2(mgs) = chgtmp/tmp
+        pscswmd(mgs) =  pscswmd(mgs) + fscsw2(mgs)*qsshr(mgs)
+      ENDIF
+
+        il = ls
+        IF ( Abs( fscsw2(mgs)*qsshr(mgs)) > 1.e-8  ) THEN
+          write(0,*) 'Problem with scs = ',il,scx(mgs,il),pqswi(mgs),pqswd(mgs),qsshr(mgs),mgs,igs(mgs),kgs(mgs)
+      write(0,*) 'qs,pqswi(mgs),pqswd(mgs),qsnew ',qx(mgs,ls),pqswi(mgs),pqswd(mgs),qx(mgs,ls) + dtp*(pqswi(mgs)+pqswd(mgs))
+      write(0,*) ' -qracs(mgs)*(1-il2(mgs)) , qhacs(mgs) , qhlacs(mgs)',  -qracs(mgs)*(1-il2(mgs)) , qhacs(mgs) , qhlacs(mgs)   
+      write(0,*) ' -qhcns(mgs)',  -qhcns(mgs)   
+      write(0,*)  '+(1-il5(mgs))*qsmlr(mgs) , qsshr(mgs) ', (1-il5(mgs))*qsmlr(mgs) , qsshr(mgs)        !null at this point when wet snow included
+      write(0,*)  'qssbv', (qssbv(mgs))   
+      write(0,*)   'qscev', Min(0.0, qscev(mgs))  
+      write(0,*)   '-qsmul',-qsmul(mgs)
+ 
+      write(0,*)   'pqswi',pqswi(mgs)
+!      write(0,*)   il5(mgs)*(qscni(mgs)+qsaci(mgs)+qsdpv(mgs)   &
+!      write(0,*)    + qscnvi(mgs)                        &
+!     write(0,*)   + ifrzs*(qiacrs(mgs) + qrfrzs(mgs))  &
+!      write(0,*)   + il2(mgs)*qsacr(mgs))   
+!      write(0,*)   + il3(mgs)*(qiacrf(mgs)+qracif(mgs)) 
+      write(0,*)    'qscev',Max(0.0, qscev(mgs))   
+      write(0,*)     'qsacw(mgs) , qscnh(mgs)',qsacw(mgs) , qscnh(mgs)
+
+        write(0,*) 'rank,temperature = ',my_rank,temcg(mgs)
+          write(0,*) 'tmp, chgtmp, qs, scs,fscsw = ',tmp,chgtmp,qx(mgs,ls),scx(mgs,ls),fscsw(mgs)
+        write(0,*) 'tmp,chgtmp, fscsw2, qsshr,fscsw2(mgs)*qsshr(mgs) ',tmp,chgtmp,fscsw2(mgs), qsshr(mgs), fscsw2(mgs)*qsshr(mgs)
+        write(0,*) 'pscswmd new,old = ',pscswmd(mgs), pscswmd(mgs) - fscsw2(mgs)*qsshr(mgs)
+        write(0,*)  psccwi(mgs), psccwd(mgs)
+        write(0,*)  psccii(mgs), psccid(mgs)
+        write(0,*)  pscrwi(mgs), pscrwd(mgs)
+        write(0,*)  pscswi(mgs), pscswd(mgs)
+        write(0,*)  pschwi(mgs), pschwd(mgs)
+        write(0,*)  pschli(mgs), pschld(mgs)
+        write(0,*) 'FD: ',pscfwi(mgs), pscfwd(mgs)
+        write(0,*)  pscpii(mgs) ,pscpid(mgs)
+        write(0,*)  pscnii(mgs) ,pscnid(mgs)
+        write(0,*)
+        write(0,*)  psccwmi(mgs), psccwmd(mgs)
+        write(0,*)  psccimi(mgs), psccimd(mgs)
+        write(0,*)  pscrwmi(mgs), pscrwmd(mgs)
+        write(0,*)  pscswmi(mgs), pscswmd(mgs), pscswmd(mgs) - fscsw2(mgs)*qsshr(mgs)
+        write(0,*)  pschwmi(mgs), pschwmd(mgs)
+        write(0,*) 'FD: ',pscfwmi(mgs), pscfwmd(mgs)
+        write(0,*)  pschlmi(mgs), pschlmd(mgs)
+
+     write(0,*)  'pscswmd(mgs)'
+     write(0,*) - fscsw(mgs)*qhacs(mgs), - fscsw(mgs)*qhlacs(mgs)
+     write(0,*)  +(1-il5(mgs))*fscsw(mgs)*qsmlr(mgs), fscrw(mgs)*qsshr(mgs)
+     write(0,*)  -fscsw(mgs)*qsmul(mgs)
+     write(0,*) qhacs(mgs), qhlacs(mgs),qsmlr(mgs),qsshr(mgs) ,qsmul(mgs)
+     write(0,*)
+     write(0,*)  fschw(mgs),fscsw(mgs),fschl(mgs)
+     write(0,*)  fsccw(mgs),fscci(mgs),fscrw(mgs)
+
+!      tmp =  qx(mgs,ls) + dtp*(pqswi(mgs) + pqswd(mgs) - qsshr(mgs)) ! should this add back the shed rain mass? probably!
+!      chgtmp = 0.0
+!      IF ( tmp > qxmin(ls) .and. qsshr(mgs) < 0.0 ) THEN
+!        chgtmp = scx(mgs,ls) + dtp*(pscswmi(mgs) - pscswmd(mgs))
+!       ! fscsw2(mgs) = chgtmp/tmp
+!       ! pscswmd(mgs) =  pscswmd(mgs) + fscsw2(mgs)*qsshr(mgs)
+!      ENDIF
+!      write(0,*) 'tmp,chgtmp, fscsw2, qsshr,fscsw2(mgs)*qsshr(mgs) ',tmp,chgtmp,fscsw2(mgs), qsshr(mgs), fscsw2(mgs)*qsshr(mgs)
+
+       ENDIF
+      end do
+      end if
+
+!
+!
+!  Graupel
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      pschwmi(mgs) =    &
+     &  +il5(mgs)*(ifiacrg*ffrzh*(fscci(mgs)*qracif(mgs)+fscrw(mgs)*qiacrf(mgs))   &
+     &  +fscrw(mgs)*ifrzg*ffrzh*qrfrzf(mgs))   &
+     &  +fscrw(mgs)*qhacr(mgs)+fsccw(mgs)*qhacw(mgs)   &
+     &  +fscsw(mgs)*qhacs(mgs)+fscci(mgs)*qhaci(mgs)   &
+     &  +fscis(mgs)*qhacis(mgs) 
+      pschwmd(mgs) =    &
+     &  - fschw(mgs)*qhlcnh(mgs)   &
+!     &  + fschw(mgs)*qhshr(mgs)    &
+     &  +(1-il5(mgs))*fschw(mgs)*qhmlr(mgs)*mixedphasefac   &
+     &  -fschw(mgs)*qhmul1(mgs)
+
+      fschw2(mgs) = 0.0
+      tmp =  qx(mgs,lh) + dtp*(pqhwi(mgs) + pqhwd(mgs) - qhshr(mgs)) ! should this add back the shed rain mass? probably!
+      IF ( tmp > qxmin(lh) .and. qhshr(mgs) < 0.0 ) THEN
+        chgtmp = scx(mgs,lh) + dtp*(pschwmi(mgs) + pschwmd(mgs)) ! sign error bug fix 3.4.2021 Thanks to Yichen (Jade) Cai.
+        IF ( sign(1.0,chgtmp) == sign(1.0,scx(mgs,lh) ) ) THEN
+          fschw2(mgs) = chgtmp/tmp
+          pschwmd(mgs) =  pschwmd(mgs) + fschw2(mgs)*qhshr(mgs)
+        ENDIF
+      ENDIF
+
+      end do
+      end if
+
+!
+!
+!  Hail
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+
+      pschlmi(:) = 0.0
+      pschlmd(:) = 0.0
+
+      IF ( lhl .gt. 1 ) THEN
+      do mgs = 1,ngscnt
+      pschlmi(mgs) =    &
+     &  +il5(mgs)*((1.0-ifiacrg)*ffrzh*(fscci(mgs)*qracif(mgs)+fscrw(mgs)*qiacrf(mgs))   &
+     &  +fscrw(mgs)*(1.0-ifrzg)*qrfrzf(mgs))   &
+     &  +fscrw(mgs)*qhlacr(mgs)+fsccw(mgs)*qhlacw(mgs)   &
+     &  +fscsw(mgs)*qhlacs(mgs)+fscci(mgs)*qhlaci(mgs)   &
+     &  + fschw(mgs)*qhlcnh(mgs) &
+     &  + fscis(mgs)*qhlacis(mgs)
+      pschlmd(mgs) =    &
+!     &  + fschl(mgs)*qhlshr(mgs)    &
+     &  +(1-il5(mgs))*fschl(mgs)*qhlmlr(mgs)*mixedphasefac    &
+     &  -fschl(mgs)*qhlmul1(mgs)
+
+       fschl2(mgs) = 0.0
+      tmp =  qx(mgs,lhl) + dtp*(pqhli(mgs) + pqhld(mgs) - qhlshr(mgs)) ! should this add back the shed rain mass? probably!
+      IF ( tmp > qxmin(lhl) .and. qhlshr(mgs) < 0.0 ) THEN
+        chgtmp = scx(mgs,lhl) + dtp*(pschlmi(mgs) + pschlmd(mgs))
+        IF ( sign(1.0,chgtmp) == sign(1.0,scx(mgs,lhl) ) ) THEN
+          fschl2(mgs) = chgtmp/tmp
+          pschlmd(mgs) =  pschlmd(mgs) + fschl2(mgs)*qhlshr(mgs)
+        ENDIF
+      ENDIF
+
+      end do
+      end if
+      ENDIF
+
+
+!
+!  Rain
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      pscrwmi(mgs) =    &
+     &    +fsccw(mgs)*qracw(mgs) +fsccw(mgs)*qrcnw(mgs)    &
+     &  +(1-il5(mgs))*   &
+     &   (-fschl(mgs)*qhlmlr(mgs) - fschw(mgs)*qhmlr(mgs)-fscsw(mgs)*qsmlr(mgs))*mixedphasefac   &
+!     &    -fschl2(mgs)*qhlshr(mgs) - fschw2(mgs)*qhshr(mgs) - fscsw(mgs)*qsshr(mgs) ! -fscsw2(mgs)*qsshr(mgs)
+     &    -fschl2(mgs)*qhlshr(mgs) - fschw2(mgs)*qhshr(mgs) -fscsw2(mgs)*qsshr(mgs)
+      pscrwmd(mgs) =     &
+     &  + il5(mgs)*(-fscrw(mgs)*qiacr(mgs)-fscrw(mgs)*qrfrz(mgs))    &
+     &  -fscrw(mgs)*qsacr(mgs)-fscrw(mgs)*qhacr(mgs) - fscrw(mgs)*qhlacr(mgs)  &
+!       + fscrw(mgs)*max(0.0,qrcev(mgs))  &
+        + fscrw(mgs)*min(0.0,qrcev(mgs))
+      end do
+      end if
+
+      pscpii(:) = 0.0 ! positive ion charge production here
+     pscpid(:) = 0.0 
+     pscnii(:) = 0.0 ! negative ion charge production here
+     pscnid(:) = 0.0 
+!
+!
+! Collisional Charging transfers (inductive/noninductive)
+!
+!
+!  rain water
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      pscrwi(mgs) = 0.0
+      pscrwd(mgs) = 0.0
+
+      pscrwi(mgs) =  pscrwi(mgs)  &
+     & + max(-schacr(mgs),0.0)    &
+     & + max(-scsacr(mgs),0.0)    &
+     & + max(scsshr(mgs),0.0)     & !Canosa & List 93
+     & + max(schshr(mgs),0.0)       !Canosa & List 93
+
+      pscrwd(mgs) =  pscrwd(mgs)  &
+     & + min(-schacr(mgs),0.0)    &
+     & + min(-scsacr(mgs),0.0)    &
+     & + min(scsshr(mgs),0.0)     & !Canosa & List 93
+     & + min(schshr(mgs),0.0)       !Canosa & List 93
+
+      end do
+      end if
+
+!
+!  cloud water
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      psccwi(mgs) = 0.0
+      psccwd(mgs) = 0.0
+
+      psccwi(mgs) =  psccwi(mgs)   &
+     & + max(-schacw(mgs),0.0)   &
+     & + max(-schlacw(mgs),0.0)   &
+     & + max(-scsacw(mgs),0.0)  
+
+      psccwd(mgs) =  psccwd(mgs)   &
+     & + min(-schacw(mgs),0.0)   &
+     & + min(-schlacw(mgs),0.0)   &
+     & + min(-scsacw(mgs),0.0)   
+
+!      end do
+!      end if
+
+       qcwtmp(mgs) = Max(0.0,qx(mgs,lc) +   &
+     &   dtp*(pqcwi(mgs)+pqcwd(mgs)) )
+
+       IF ( qcwtmp(mgs) .gt. qxmin(lc) ) then
+       
+      IF ( ipconc .lt. 2 ) THEN
+       ccwtmp = cwccn
+       ccwtmp = Max(1.0,qcwtmp(mgs)*rho0(mgs)/xmas(mgs,lc))
+      ELSE
+ 
+       ccwtmp = Max(0.001, cx(mgs,lc) + dtp*(pccwi(mgs)+pccwd(mgs)) )
+      
+      ENDIF ! ( ipconc .lt. 2 )
+
+      
+       cpqc = (scx(mgs,lc)   &
+     &   +dtp*(psccwi(mgs)+psccwd(mgs)   &
+     &   +psccwmi(mgs)+psccwmd(mgs)))/ccwtmp
+      
+         IF ( Abs(cpqc) .gt. scwppmx .and.   &
+     &       ( psccwi(mgs)+psccwd(mgs) ) .ne. 0.0 .and.   &
+     &    Sign(1.0,scx(mgs,lc)) .eq.   &
+     &        Sign(1.0,( psccwi(mgs)+psccwd(mgs) )) ) THEN
+          
+           cpqc0 = Sign(scwppmx,cpqc)
+          
+           scfac = (cpqc0*ccwtmp - scx(mgs,lc) -   &
+     &       dtp*(psccwmi(mgs)+psccwmd(mgs)))/   &
+     &              ( dtp*(psccwi(mgs)+psccwd(mgs)) )
+!           IF ( scfac .gt. 1.0 .or. scfac .lt. 0.0 ) THEN
+           IF ( scfac .gt. 1.0 ) THEN
+             write(iunit,*) 'OUCH: scwfac = ',scfac
+             write(0,*) 'OUCH: scwfac = ',scfac
+           ENDIF
+          scfac = Max(scfac,0.0)
+          scfac = Min(scfac,1.0)
+        
+!        IF ( scfac .lt. 1.0 .and. scfac .gt. 0.0 ) THEN
+!        write(iunit,*) 'LOOK: sccwfac = ',scfac,cpqc,scx(mgs,lc),ccwtmp,
+!     : kgs(mgs),temg(mgs)
+!        ENDIF
+         
+        ELSE
+          scfac = 1.0
+        ENDIF
+      
+      ELSE
+       scfac = 0.0
+      ENDIF ! ( qcwtmp .gt. qxmin(lc) ) 
+      
+      IF ( scfac .lt. 1.0 .and. qx(mgs,lc) .gt. qxmin(lc) ) THEN
+       schacw(mgs) = scfac*schacw(mgs)
+       schlacw(mgs) = scfac*schlacw(mgs)
+       scsacw(mgs) = scfac*scsacw(mgs)
+
+      psccwi(mgs) = 0.0
+      psccwd(mgs) = 0.0
+      psccwi(mgs) =  psccwi(mgs)   &
+     & + max(-schacw(mgs),0.0)   &
+     & + max(-schlacw(mgs),0.0)   &
+     & + max(-scsacw(mgs),0.0)
+      psccwd(mgs) =  psccwd(mgs)   &
+     & + min(-schacw(mgs),0.0)   &
+     & + min(-schlacw(mgs),0.0)   &
+     & + min(-scsacw(mgs),0.0)
+      ENDIF
+      end do
+      
+      
+      end if
+
+!
+!  cloud ice
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      psccii(mgs) = 0.0
+      psccid(mgs) = 0.0
+      psccii(mgs) =  psccii(mgs)   &
+     & + max(-schaci(mgs),0.0)   &
+     & + max(-schlaci(mgs),0.0)   &
+     & + max(-scsaci(mgs),0.0)
+      psccid(mgs) =  psccid(mgs)   &
+     & + min(-schaci(mgs),0.0)   &
+     & + min(-schlaci(mgs),0.0)   &
+     & + min(-scsaci(mgs),0.0)
+
+      qcitmp = Max(0.0,qx(mgs,li) +   &
+     &   dtp*(pqcii(mgs)+pqcid(mgs)) )
+
+      IF ( qcitmp .gt. qxmin(li) ) then
+
+      IF ( ipconc .le. 0 ) THEN
+      
+      ccitmp = cnina(mgs)
+      IF ( cimn .gt. 1.0 ) THEN
+        cx(mgs,li) = Max(cimn,cx(mgs,li))
+      ENDIF
+      IF ( cimx .gt. 1.0 ) THEN
+        cx(mgs,li) = Min(cimx,cx(mgs,li))
+      ENDIF
+      IF ( itype1 .ge. 1 .or. itype2 .ge. 1 ) THEN 
+!        ccitmp = Max(ccitmp,qcitmp*rho0(mgs)/cimasx)
+        ccitmp = Min(ccitmp,qcitmp*rho0(mgs)/cimasn)
+      ENDIF
+      ccitmp = max(1.0,ccitmp)
+
+      ELSE
+ 
+       ccitmp = Max(0.001, cx(mgs,li) + dtp*(pccii(mgs)+pccid(mgs)) )
+      
+      ENDIF ! ( ipconc .le. 0 )
+      
+      
+      cpci = (scx(mgs,li)   &
+     &   +dtp*( psccii(mgs)+psccid(mgs)   &
+     &         +psccimi(mgs)+psccimd(mgs)))/ccitmp
+      
+          IF ( Abs(cpci) .gt. scippmx .and.   &
+     &       ( psccii(mgs)+psccid(mgs) ) .ne. 0.0 .and.   &
+     &    Sign(1.0,scx(mgs,li)) .eq.   &
+     &        Sign(1.0,( psccii(mgs)+psccid(mgs) )) ) THEN
+          
+           cpci0 = Sign(scippmx,cpci)
+          
+           scfac = (cpci0*ccitmp - scx(mgs,li) -    &
+     &       dtp*(psccimi(mgs)+psccimd(mgs)))/   &
+     &              ( dtp*(psccii(mgs)+psccid(mgs)) )
+!           IF ( scfac .gt. 1.0 .or. scfac .lt. 0.0 ) THEN
+           IF ( scfac .gt. 1.0 ) THEN
+             write(iunit,*) 'OUCH: sccifac = ',scfac,   &
+     & dtp*(psccimi(mgs)+psccimd(mgs)),cpci,scx(mgs,li),ccitmp
+             write(0,*) 'OUCH: sccifac = ',scfac,   &
+     & dtp*(psccimi(mgs)+psccimd(mgs)),cpci,scx(mgs,li),ccitmp,   &
+     & kgs(mgs),temg(mgs)
+           ENDIF
+          scfac = Max(scfac,0.0)
+          scfac = Min(scfac,1.0)
+
+!        IF ( scfac .lt. 1.0 ) THEN
+!        write(iunit,*) 'LOOK: sccifac = ',scfac,cpci,scx(mgs,li),ccitmp,
+!     : kgs(mgs),temg(mgs)
+!        ENDIF
+         
+        ELSE
+          scfac = 1.0
+        ENDIF
+      ELSE
+       scfac = 0.0
+      ENDIF ! ( qcitmp .gt. qxmin(li) ) 
+
+      IF ( scfac .lt. 1.0 ) THEN
+
+
+       schaci(mgs) = scfac*schaci(mgs)
+       schlaci(mgs) = scfac*schlaci(mgs)
+       scsaci(mgs) = scfac*scsaci(mgs)
+
+      psccii(mgs) = 0.0
+      psccid(mgs) = 0.0
+      psccii(mgs) =  psccii(mgs)   &
+     & + max(-schaci(mgs),0.0)   &
+     & + max(-schlaci(mgs),0.0)   &
+     & + max(-scsaci(mgs),0.0)
+      psccid(mgs) =  psccid(mgs)   &
+     & + min(-schaci(mgs),0.0)   &
+     & + min(-schlaci(mgs),0.0)   &
+     & + min(-scsaci(mgs),0.0)
+      
+      ENDIF
+
+      end do
+      end if
+
+
+!
+!  ice spheres
+!
+      IF ( lis > 1 ) THEN
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      pscisi(mgs) = 0.0
+      pscisd(mgs) = 0.0
+      pscisi(mgs) =  pscisi(mgs)   &
+     & + max(-schacis(mgs),0.0)   &
+     & + max(-schlacis(mgs),0.0)   &
+     & + max(-scsacis(mgs),0.0)
+      pscisd(mgs) =  pscisd(mgs)   &
+     & + min(-schacis(mgs),0.0)   &
+     & + min(-schlacis(mgs),0.0)    &
+     & + min(-scsacis(mgs),0.0)
+
+      qcitmp = Max(0.0,qx(mgs,lis) +   &
+     &   dtp*(pqisi(mgs)+pqisd(mgs)) )
+
+      IF ( qcitmp .gt. qxmin(lis) ) then
+
+       ccitmp = Max(0.001, cx(mgs,lis) + dtp*(pcisi(mgs)+pcisd(mgs)) )
+      
+      cpci = (scx(mgs,lis)   &
+     &   +dtp*( pscisi(mgs)+pscisd(mgs)   &
+     &         +pscismi(mgs)+pscismd(mgs)))/ccitmp
+      
+          IF ( Abs(cpci) .gt. scippmx .and.   &
+     &       ( pscisi(mgs)+pscisd(mgs) ) .ne. 0.0 .and.   &
+     &    Sign(1.0,scx(mgs,lis)) .eq.   &
+     &        Sign(1.0,( pscisi(mgs)+pscisd(mgs) )) ) THEN
+          
+           cpci0 = Sign(scippmx,cpci)
+          
+           scfac = (cpci0*ccitmp - scx(mgs,lis) -    &
+     &       dtp*(pscismi(mgs)+pscismd(mgs)))/   &
+     &              ( dtp*(pscisi(mgs)+pscisd(mgs)) )
+!           IF ( scfac .gt. 1.0 .or. scfac .lt. 0.0 ) THEN
+           IF ( scfac .gt. 1.0 ) THEN
+             write(iunit,*) 'OUCH: sccifac = ',scfac,   &
+     & dtp*(pscismi(mgs)+pscismd(mgs)),cpci,scx(mgs,lis),ccitmp
+             write(0,*) 'OUCH: sccifac = ',scfac,   &
+     & dtp*(pscismi(mgs)+pscismd(mgs)),cpci,scx(mgs,lis),ccitmp,   &
+     & kgs(mgs),temg(mgs)
+           ENDIF
+          scfac = Max(scfac,0.0)
+          scfac = Min(scfac,1.0)
+
+!        IF ( scfac .lt. 1.0 ) THEN
+!        write(iunit,*) 'LOOK: sccifac = ',scfac,cpci,scx(mgs,li),ccitmp,
+!     : kgs(mgs),temg(mgs)
+!        ENDIF
+         
+        ELSE
+          scfac = 1.0
+        ENDIF
+      ELSE
+       scfac = 0.0
+      ENDIF ! ( qcitmp .gt. qxmin(li) ) 
+
+      IF ( scfac .lt. 1.0 ) THEN
+
+
+       schacis(mgs) = scfac*schacis(mgs)
+       schlacis(mgs) = scfac*schlacis(mgs)
+       scsacis(mgs) = scfac*scsacis(mgs)
+
+      pscisi(mgs) = 0.0
+      pscisd(mgs) = 0.0
+      pscisi(mgs) =  pscisi(mgs)   &
+     & + max(-schacis(mgs),0.0)   &
+     & + max(-schlacis(mgs),0.0)   &
+     & + max(-scsacis(mgs),0.0)
+      pscisd(mgs) =  pscisd(mgs)   &
+     & + min(-schacis(mgs),0.0)   &
+     & + min(-schlacis(mgs),0.0)   &
+     & + min(-scsacis(mgs),0.0)
+      
+      ENDIF
+
+      end do
+      end if
+      ENDIF ! lis > 1
+
+
+!
+!  snow
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      pscswi(mgs) = 0.0
+      pscswd(mgs) = 0.0
+
+      pscswi(mgs) =  pscswi(mgs)   &
+     & + max(scsaci(mgs),0.0)   &
+     & + max(scsacw(mgs),0.0)   &
+     & + max(scsacr(mgs),0.0)   &
+     & + max(-schacs(mgs),0.0)   &
+     & + max(-schlacs(mgs),0.0)  &
+     & + max(scsmlr(mgs),0.0)    &  !Drake
+     & + max(scsdep(mgs),0.0)    &  !Dong&Hallett
+     & - min(scsshr(mgs),0.0)       !Canosa & List 93
+      pscswd(mgs) =  pscswd(mgs)   &
+     & + min(scsaci(mgs),0.0)   &
+     & + min(scsacw(mgs),0.0)   &
+     & + min(scsacr(mgs),0.0)   &
+     & + min(-schacs(mgs),0.0)   &
+     & + min(-schlacs(mgs),0.0)  &
+     & + min(scsmlr(mgs),0.0)    &   !Drake, but always 0.? (since scsmlr >= 0)
+     & + min(scsdep(mgs),0.0)    &   !Dong&Hallett
+     & - max(scsshr(mgs),0.0)        !Canosa & List 93
+      end do
+      end if
+
+!
+!  Graupel
+!
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+      pschwi(mgs) = 0.0
+      pschwd(mgs) = 0.0
+
+      pschwi(mgs) =  pschwi(mgs)   &
+     & + max(schaci(mgs),0.0)   &
+!     > + max(schacip(mgs),0.0)   &
+!     > + max(schacir(mgs),0.0)   &
+     & + max(schacs(mgs),0.0)   &
+     & + max(schacw(mgs),0.0)   &
+     & + max(schacr(mgs),0.0)   &
+     & + max(schmlr(mgs),0.0)   & !Drake
+     & - min(schshr(mgs),0.0)     !Canosa & List 93
+      pschwd(mgs) =  pschwd(mgs)   &
+     & + min(schaci(mgs),0.0)   &
+!     > + min(schacip(mgs),0.0)   &
+!     > + min(schacir(mgs),0.0)   &
+     & + min(schacs(mgs),0.0)   &
+     & + min(schacw(mgs),0.0)   &
+     & + min(schacr(mgs),0.0)   &
+     & + min(schmlr(mgs),0.0)   & !Drake, but always 0.? (since schmlr >= 0)
+     & - max(schshr(mgs),0.0)     !Canosa & List 93
+      
+      IF ( lis > 1 ) THEN
+        pschwi(mgs) =  pschwi(mgs) + max(schacis(mgs),0.0)   
+        pschwd(mgs) =  pschwd(mgs) + min(schacis(mgs),0.0)
+      ENDIF
+      
+      end do
+      end if
+
+!
+!  Frozen drops
+!
+      pscfwi(:) = 0.0
+      pscfwd(:) = 0.0
+
+!
+!  Hail
+!
+      pschli(:) = 0.0
+      pschld(:) = 0.0
+
+      IF ( lhl .gt. 1 ) THEN
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+
+      pschli(mgs) =  pschli(mgs)   &
+     & + max(schlaci(mgs),0.0)   &
+     & + max(schlacs(mgs),0.0)   &
+     & + max(schlacw(mgs),0.0)   &
+     & + max(schlacr(mgs),0.0)
+
+      pschld(mgs) =  pschld(mgs)   &
+     & + min(schlaci(mgs),0.0)   &
+     & + min(schlacs(mgs),0.0)   &
+     & + min(schlacw(mgs),0.0)   &
+     & + min(schlacr(mgs),0.0)
+
+      IF ( lis > 1 ) THEN
+        pschli(mgs) =  pschli(mgs) + max(schlacis(mgs),0.0)   
+        pschld(mgs) =  pschld(mgs) + min(schlacis(mgs),0.0)
+      ENDIF
+
+      end do
+      end if
+      ENDIF
+
+!
+! Ions
+!
+      pscpii(:) = 0.0 ! positive ion charge production here
+      pscpid(:) = 0.0 
+      pscnii(:) = 0.0 ! negative ion charge production here
+      pscnid(:) = 0.0
+      pscplii(:) = 0.0
+      pscplid(:) = 0.0
+      pscnlii(:) = 0.0
+      pscnlid(:) = 0.0      
+      
+      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
+      do mgs = 1,ngscnt
+       IF (largeion) THEN
+        ! Drop break-off from melting snow/graupel goes to large ions (Drake 1968)
+        ! Evaporating drops create large ions (Takahashi 1979)
+        ! Depositional growth through small ions (Dong & Hallett 1992)
+        ! Condensing drops remove small ions, but handled in ion attachment
+        pscnlii(mgs) =  pscnlii(mgs)  &
+     &               + min(fscrw(mgs),0.0)*max(-qrcev(mgs),0.0)  &
+     &               + min(fscsw(mgs),0.0)*max(-qscev(mgs),0.0)  &
+     &               + min(-schmlr(mgs),0.0)    &
+     &               + min(-scsmlr(mgs),0.0)
+        pscplii(mgs) =  pscplii(mgs)  &
+     &               + max(fscrw(mgs),0.0)*max(-qrcev(mgs),0.0)  &
+     &               + max(fscsw(mgs),0.0)*max(-qscev(mgs),0.0)  &
+     &               + max(-schmlr(mgs),0.0)    &
+     &               + max(-scsmlr(mgs),0.0)
+       ELSE
+        pscnii(mgs) =  pscnii(mgs)  &
+     &               - min(fscrw(mgs),0.0)*min(qrcev(mgs),0.0)  &
+     &               - min(fscsw(mgs),0.0)*min(qscev(mgs),0.0)  &
+     &               + min(-schmlr(mgs),0.0)    &
+     &               + min(-scsmlr(mgs),0.0)
+        pscpii(mgs) =  pscpii(mgs)  &
+     &               - max(fscrw(mgs),0.0)*min(qrcev(mgs),0.0)  &
+     &               - max(fscsw(mgs),0.0)*min(qscev(mgs),0.0)  &
+     &               + max(-schmlr(mgs),0.0)    &
+     &               + max(-scsmlr(mgs),0.0)
+      ENDIF
+
+        pscnid(mgs) =  pscnid(mgs)  &
+     &               - max(-scsdep(mgs),0.0)
+        pscpid(mgs) =  pscpid(mgs)  &
+     &               - min(-scsdep(mgs),0.0)
+
+
+      end do
+
+      end if
+
+!
+!  continuity of space charge
+!
+      if ( ipelec .ge. 1 ) then
+      do mgs = 1,ngscnt
+      psctot(mgs) = psccwi(mgs) +psccwd(mgs) +   &
+     &              psccii(mgs) +psccid(mgs) +   &
+     &              pscrwi(mgs) +pscrwd(mgs) +   &
+     &              pscswi(mgs) +pscswd(mgs) +   &
+     &              pschwi(mgs) +pschwd(mgs) +       &
+     &              pschli(mgs) +pschld(mgs) +       &
+     &              pscfwi(mgs) +pscfwd(mgs) +       &
+     &              pscpii(mgs) +pscpid(mgs) +       &
+     &              pscnii(mgs) +pscnid(mgs) +       &
+     &              pscplii(mgs) +pscplid(mgs) +       &
+     &              pscnlii(mgs) +pscnlid(mgs) +       &
+!
+     &              psccwmi(mgs) +psccwmd(mgs) +   &
+     &              psccimi(mgs) +psccimd(mgs) +   &
+     &              pscrwmi(mgs) +pscrwmd(mgs) +   &
+     &              pscswmi(mgs) +pscswmd(mgs) +   &
+     &              pschwmi(mgs) +pschwmd(mgs) +     &
+     &              pscfwmi(mgs) +pscfwmd(mgs) +     &
+     &              pschlmi(mgs) +pschlmd(mgs)
+      IF ( .not. ( psctot(mgs) .gt. -1. .and. psctot(mgs) .lt. 1.0 ) .or.    &
+     &      Abs( psctot(mgs) ) .gt. esctot .or. Abs(pschwmi(mgs)) > 0.1 )  THEN
+
+!        write(iunit,*) 'yikes! psctot = ',psctot(mgs),'and esctot =',esctot,'at',mgs
+
+      IF ( .not. ( psctot(mgs) .gt. -1.0 .and. psctot(mgs) .lt. 1.0 ) .or.  &
+            Abs( psctot(mgs) ) .gt. 1.0 ) THEN
+        write(0,*)  psccwi(mgs), psccwd(mgs)
+        write(0,*)  psccii(mgs), psccid(mgs)
+        write(0,*)  pscrwi(mgs), pscrwd(mgs)
+        write(0,*)  pscswi(mgs), pscswd(mgs)
+        write(0,*)  pschwi(mgs), pschwd(mgs)
+        write(0,*)  pscfwi(mgs), pscfwd(mgs)
+        write(0,*)  pschli(mgs), pschld(mgs)
+        write(0,*)  pscpii(mgs) ,pscpid(mgs)
+        write(0,*)  pscnii(mgs) ,pscnid(mgs)
+        write(0,*)
+        write(0,*)  psccwmi(mgs), psccwmd(mgs)
+        write(0,*)  psccimi(mgs), psccimd(mgs)
+        write(0,*)  pscrwmi(mgs), pscrwmd(mgs)
+        write(0,*)  pscswmi(mgs), pscswmd(mgs)
+        write(0,*)  pschwmi(mgs), pschwmd(mgs)
+        write(0,*)  pscfwmi(mgs), pscfwmd(mgs)
+        write(0,*)  pschlmi(mgs), pschlmd(mgs)
+
+      write(0,*) 'Problem with psctot,pschwmi: ',mgs,psctot(mgs),pschwmi(mgs)
+      DO il = lc,lhab
+       write(0,*) 'il,scx,qx = ',il,scx(mgs,il),qx(mgs,il)
+      ENDDO
+
+       STOP
+       ENDIF
+      ENDIF
+
+      IF ( Abs( psctot(mgs) ) .gt. esctot .and. ndebug > 0  )  THEN
+      ENDIF
+
+      end do
+      
+      ENDIF
+
+! compute space charge arrays:
+
+    if (ipelec.ge.1) then
+
+     do mgs = 1,ngscnt
+
+      DO il = lc,lhab
+!      IF ( .not. (scx(mgs,il) > -1.e-6 .and. scx(mgs,il) < 1.e-6 ) .or. scx(mgs,il) > 1.e-9 ) THEN ! DEBUGTED
+      IF ( .not. (scx(mgs,il) > -1.e-6 .and. scx(mgs,il) < 1.e-6 ) ) THEN 
+        write(0,*) 'Problem1a with scx il = ',il,scx(mgs,il),mgs,igs(mgs),kgs(mgs),jyslab
+        write(0,*) 'psccw: ',psccwi(mgs),psccwd(mgs),psccwmi(mgs),psccwmd(mgs)
+        STOP
+      ENDIF
+      ENDDO
+
+     scx(mgs,lc) = scx(mgs,lc) +   &
+    &   dtp*(psccwi(mgs)+psccwd(mgs)+psccwmi(mgs)+psccwmd(mgs))
+     scx(mgs,li) = scx(mgs,li) +   &
+    &   dtp*(psccii(mgs)+psccid(mgs)+psccimi(mgs)+psccimd(mgs))
+     scx(mgs,lr) = scx(mgs,lr) +   &
+    &   dtp*(pscrwi(mgs)+pscrwd(mgs)+pscrwmi(mgs)+pscrwmd(mgs))
+     scx(mgs,ls) = scx(mgs,ls) +   &
+    &   dtp*(pscswi(mgs)+pscswd(mgs)+pscswmi(mgs)+pscswmd(mgs))
+     scx(mgs,lh) = scx(mgs,lh) +   &
+    &   dtp*(pschwi(mgs)+pschwd(mgs)+pschwmi(mgs)+pschwmd(mgs))
+
+
+     IF ( lhl .gt. 1 ) THEN
+     scx(mgs,lhl) = scx(mgs,lhl) +   &
+    &   dtp*(pschli(mgs)+pschld(mgs)+pschlmi(mgs)+pschlmd(mgs))
+     ENDIF
+
+      cionp(mgs) = cionp(mgs) +  &
+     &   dtp*eci*(pscpii(mgs)+pscpid(mgs)) ! #/m3 * C / C/m3. ! each ion has electron charge
+
+      cionn(mgs) = cionn(mgs) -  &
+     &   dtp*eci*(pscnii(mgs)+pscnid(mgs))
+
+      if ( largeion ) then
+      clionp(mgs) = clionp(mgs) +  &
+     &   dtp*eci*(pscplii(mgs)+pscplid(mgs))
+      clionn(mgs) = clionn(mgs) -  &
+     &   dtp*eci*(pscnlii(mgs)+pscnlid(mgs))
+      endif 
+
+
+     end do
+     end if ! (ipelec .ge. 1 )
+    
 
 
 
@@ -19455,6 +24818,40 @@ END SUBROUTINE nssl_2mom_driver
 
 
 
+      IF ( ipelec >= 1 ) THEN
+
+      DO mgs = 1,ngscnt
+        t1(igs(mgs),jy,kgs(mgs)) = scsaci(mgs)
+        t2(igs(mgs),jy,kgs(mgs)) = schacs(mgs)
+        t3(igs(mgs),jy,kgs(mgs)) = schaci(mgs) + schacis(mgs)
+        IF ( lf > 1 ) t3(igs(mgs),jy,kgs(mgs)) =  t3(igs(mgs),jy,kgs(mgs)) + scfaci(mgs) + scfacis(mgs)
+        IF ( lf > 1 ) t2(igs(mgs),jy,kgs(mgs)) = t2(igs(mgs),jy,kgs(mgs)) + scfacs(mgs)
+        t4(igs(mgs),jy,kgs(mgs)) = scsacw(mgs)
+        t5(igs(mgs),jy,kgs(mgs)) = schacw(mgs) + schlacw(mgs)
+        t6(igs(mgs),jy,kgs(mgs)) = schlacs(mgs)
+        t8(igs(mgs),jy,kgs(mgs)) = schlaci(mgs) + schlacis(mgs)
+!        IF ( igs(mgs) == 43 .and. kgs(mgs) == 47 ) THEN
+!          write(0,*) 'scsaci(mgs)',scsaci(mgs)
+!          write(0,*) 'schacs(mgs)',schacs(mgs)
+!          write(0,*) 'schaci(mgs)',schaci(mgs)
+!          write(0,*) 'scsacw(mgs)',scsacw(mgs)
+!          write(0,*) 'schacw(mgs) + schlacw(mgs)',schacw(mgs) + schlacw(mgs)
+!          write(0,*) 'schlacs(mgs)',schlacs(mgs)
+!          write(0,*) 'schlaci(mgs)',schlaci(mgs)
+!        ENDIF
+!        t1(igs(mgs),jy,kgs(mgs)) = 0
+!        t2(igs(mgs),jy,kgs(mgs)) = 0
+!        t3(igs(mgs),jy,kgs(mgs)) = 0
+!        t4(igs(mgs),jy,kgs(mgs)) = 0
+!        t5(igs(mgs),jy,kgs(mgs)) = 0
+!        t6(igs(mgs),jy,kgs(mgs)) = 0
+!        t8(igs(mgs),jy,kgs(mgs)) = 0
+
+      ENDDO
+
+      ENDIF
+
+
       if (ndebug .gt. 0 ) write(0,*) 'gs 11'
 
       do mgs = 1,ngscnt
@@ -19554,6 +24951,13 @@ END SUBROUTINE nssl_2mom_driver
           ENDIF ! }
 
           DO mgs = 1,ngscnt
+
+            IF ( il == lh ) THEN
+            IF ( lnhf > 1 ) THEN ! number of graupel from frozen drops
+              an(igs(mgs),jy,kgs(mgs),lnhf) = Max( chxf(mgs,lh), 0.0)
+            ENDIF
+            ENDIF
+
             IF ( il == lhl ) THEN
             
             IF ( lnhlf > 1 ) THEN ! number of hail from frozen drops
@@ -19615,6 +25019,130 @@ END SUBROUTINE nssl_2mom_driver
 !
 !
       if (ndebug .gt. 0 ) write(0,*) 'gs 12'
+
+
+
+! put scx arrays back into an array
+      IF ( lscw .gt. 1 .and. ipelec >= 1 ) THEN
+      do mgs = 1,ngscnt
+!     total space charge ! dont forget to repass array back to AN() as this is used in the driver
+         an(igs(mgs),jy,kgs(mgs),lscpi) = cionp(mgs)
+         an(igs(mgs),jy,kgs(mgs),lscni) = cionn(mgs)
+
+      if ( largeion ) then
+
+       if ( clionp(mgs) .gt. clionpmx ) then
+        an(igs(mgs),jy,kgs(mgs),lscpli) = clionpmx
+        an(igs(mgs),jy,kgs(mgs),lscpi)  = an(igs(mgs),jy,kgs(mgs),lscpi) + ( clionp(mgs) - clionpmx )
+       else
+        an(igs(mgs),jy,kgs(mgs),lscpli) = clionp(mgs)
+       endif
+       if ( clionn(mgs) .gt. clionnmx ) then
+        an(igs(mgs),jy,kgs(mgs),lscnli) = clionnmx
+        an(igs(mgs),jy,kgs(mgs),lscni)  = an(igs(mgs),jy,kgs(mgs),lscni) + ( clionn(mgs) - clionnmx )
+       else
+        an(igs(mgs),jy,kgs(mgs),lscnli) = clionn(mgs)
+       endif
+
+      end if
+
+      ENDDO
+      DO il = lc,lhab
+      do mgs = 1,ngscnt
+        tmp = an(igs(mgs),jy,kgs(mgs),lsc(il))
+        an(igs(mgs),jy,kgs(mgs),lsc(il)) = scx(mgs,il)
+!        IF ( .not. (scx(mgs,il) > -1.e-6 .and. scx(mgs,il) < 1.e-6 ) ) THEN
+!        IF ( Abs (scx(mgs,il) ) > 1000.e-9 .or. Abs(scx(mgs,il)) > 1.e-9 ) THEN ! DEBUGTED
+        IF ( Abs (scx(mgs,il) ) > 1000.e-9  ) THEN
+          write(0,*) 'Problem2 with scx il = ',il,scx(mgs,il),tmp,mgs,tmp-scx(mgs,il),(tmp-scx(mgs,il))*dtpinv
+          write(0,*) 'temper = ',temcg(mgs)
+          write(0,*) 'qx,cx = ',qx(mgs,il),cx(mgs,il)
+        write(0,*)  psccwi(mgs), psccwd(mgs)
+        write(0,*)  psccii(mgs), psccid(mgs)
+        write(0,*)  pscrwi(mgs), pscrwd(mgs)
+        write(0,*)  pscswi(mgs), pscswd(mgs)
+        write(0,*)  pschwi(mgs), pschwd(mgs)
+        write(0,*)  pschli(mgs), pschld(mgs)
+        write(0,*)  pscpii(mgs) ,pscpid(mgs)
+        write(0,*)  pscnii(mgs) ,pscnid(mgs)
+        write(0,*)
+        write(0,*)  psccwmi(mgs), psccwmd(mgs)
+        write(0,*)  psccimi(mgs), psccimd(mgs)
+        write(0,*)  pscrwmi(mgs), pscrwmd(mgs)
+        write(0,*)  pscswmi(mgs), pscswmd(mgs)
+        write(0,*)  pschwmi(mgs), pschwmd(mgs)
+        write(0,*)  pschlmi(mgs), pschlmd(mgs)
+
+        write(0,*) 'ci: tot, parts:', dtp*(psccii(mgs)+psccid(mgs)+psccimi(mgs)+psccimd(mgs)), &
+     &             dtp*psccii(mgs),dtp*psccid(mgs),dtp*psccimi(mgs),dtp*psccimd(mgs)
+
+        write(0,*) 'rain: tot, parts:', dtp*(pscrwi(mgs)+pscrwd(mgs)+pscrwmi(mgs)+pscrwmd(mgs)), &
+     &             dtp*pscrwi(mgs), dtp*pscrwd(mgs), dtp*pscrwmi(mgs), dtp*pscrwmd(mgs)
+        
+        write(0,*) +fsccw(mgs)*qracw(mgs) ,fsccw(mgs)*qrcnw(mgs) 
+        write(0,*)  fschl(mgs)*qhlmlr(mgs), fschw(mgs)*qhmlr(mgs), fscsw(mgs)*qsmlr(mgs)
+        write(0,*)  fschl2(mgs)*qhlshr(mgs), fschw2(mgs)*qhshr(mgs) , fscsw2(mgs)*qsshr(mgs)
+        write(0,*) fschw2(mgs), qhshr(mgs)
+        write(0,*) 'qh,sch = ',an(igs(mgs),jgs,kgs(mgs),lh),an(igs(mgs),jgs,kgs(mgs),lsch)
+        write(0,*) 'scx = ',scx(mgs,lh)
+
+        write(0,*) 'graupel chg: new, old = ',scx(mgs,lh),scx(mgs,lh) -   &
+    &   dtp*(pschwi(mgs)+pschwd(mgs)+pschwmi(mgs)+pschwmd(mgs))
+        write(0,*) 'graupel rates: ',pschwi(mgs),pschwd(mgs),pschwmi(mgs),pschwmd(mgs)
+        write(0,*) 'pschwmi parts'
+        write(0,*)  +il5(mgs)*(ifiacrg*(fscci(mgs)*qracif(mgs)+fscrw(mgs)*qiacrf(mgs))   &
+     &  +fscrw(mgs)*ifrzg*qrfrz(mgs))   
+        write(0,*)   +fscrw(mgs)*qhacr(mgs)+fsccw(mgs)*qhacw(mgs)   
+        write(0,*)   +fscsw(mgs)*qhacs(mgs)+fscci(mgs)*qhaci(mgs)   
+        write(0,*)  +fscis(mgs)*qhacis(mgs) 
+
+        write(0,*) 'pschwmd parts'
+        write(0,*)   - fschw(mgs)*qhlcnh(mgs),fschw(mgs),qhlcnh(mgs)  
+!     &  + fschw(mgs)*qhshr(mgs)    &
+        write(0,*)   +(1-il5(mgs))*fschw(mgs)*qhmlr(mgs)*mixedphasefac   
+        write(0,*)   -fschw(mgs)*qhmul1(mgs), fschw(mgs), qhmul1(mgs)
+
+
+        write(0,*) 'pschlmi parts'
+        write(0,*)  +fscrw(mgs)*qhlacr(mgs),fsccw(mgs)*qhlacw(mgs)   
+        write(0,*)  +fscsw(mgs)*qhlacs(mgs),fscci(mgs)*qhlaci(mgs)   
+        write(0,*)  + fschw(mgs)*qhlcnh(mgs) ,fschw(mgs),qhlcnh(mgs) 
+        write(0,*)  + fscis(mgs)*qhlacis(mgs)
+
+
+     write(0,*) 'qs,qsold: ',qx(mgs,ls), qx(mgs,ls) - dtp*(pqswi(mgs)+pqswd(mgs))
+     write(0,*) 'cs,csold: ',cx(mgs,ls), cx(mgs,ls) - dtp*(pcswi(mgs)+pcswd(mgs))
+
+     
+     write(0,*)  'pscswmd(mgs)',fscsw(mgs),fscsw2(mgs)
+     write(0,*) - fscsw(mgs)*qhacs(mgs), - fscsw(mgs)*qhlacs(mgs)
+     write(0,*)  +(1-il5(mgs))*fscsw(mgs)*qsmlr(mgs)*mixedphasefac , fscrw(mgs)*qsshr(mgs)
+     write(0,*)  -fscsw(mgs)*qsmul(mgs)
+     write(0,*) qhacs(mgs), qhlacs(mgs),qsmlr(mgs),qsshr(mgs) ,qsmul(mgs), mixedphasefac
+     write(0,*)
+     write(0,*)  fschw(mgs),fscsw(mgs),fschl(mgs)
+     write(0,*)  fsccw(mgs),fscci(mgs),fscrw(mgs)
+
+     write(0,*)  'fscsw2(mgs)*qsshr(mgs), ', fscsw2(mgs)*qsshr(mgs)
+
+      tmp =  qx(mgs,ls) + dtp*(pqswi(mgs) + pqswd(mgs) - qsshr(mgs)) ! should this add back the shed rain mass? probably!
+      chgtmp = 0.0
+      IF ( tmp > qxmin(ls) .and. qsshr(mgs) < 0.0 ) THEN
+        chgtmp = scx(mgs,ls) + dtp*(pscswmi(mgs) - pscswmd(mgs))
+       ! fscsw2(mgs) = chgtmp/tmp
+       ! pscswmd(mgs) =  pscswmd(mgs) + fscsw2(mgs)*qsshr(mgs)
+      ENDIF
+      write(0,*) 'tmp,chgtmp, fscsw2, qsshr,fscsw2(mgs)*qsshr(mgs) ',tmp,chgtmp,fscsw2(mgs), qsshr(mgs), fscsw2(mgs)*qsshr(mgs)
+
+
+        STOP
+        ENDIF
+      end do
+      ENDDO
+
+      ENDIF
+
+!      write(0,*) 'SCW',MAXVAL(scx(:,lc)),MAXLOC(scx(:,lc)),MINVAL(scx(:,lc)),MINLOC(scx(:,lc))
 
 
 

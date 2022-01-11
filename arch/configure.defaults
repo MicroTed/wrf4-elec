@@ -887,7 +887,7 @@ ARFLAGS         =      ru
 M4              =      m4 -B 14000
 RANLIB          =      ranlib
 RLFLAGS		=	-c
-CC_TOOLS        =      cc
+CC_TOOLS        =      $(SCC)
 
 ###########################################################
 #ARCH    Darwin (MACOS) intel compiler with clang EDIT FOR OPENMPI #serial smpar dmpar dm+sm
