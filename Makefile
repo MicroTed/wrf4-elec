@@ -16,6 +16,8 @@ ELEC_FILES = ../elec/module_commasmpi.o \
              ../elec/module_mp_discharge.o \
              ../elec/module_mp_nudge_light.o \
              ../elec/include_microphysics_driver_elec.F
+NSSL2ME = ../elec/module_mp_nssl_2mom_elec.o
+NSSL2M = module_mp_nssl_2mom.o
 
 # these files are needed to compile 'phys' in wrfplus mode
 MODS4 = ../wrftladj/module_mp_mkessler.o ../wrftladj/module_mp_nconvp.o \
@@ -1104,15 +1106,15 @@ physics :
 	@ echo '--------------------------------------'
 	if [ $(WRF_CHEM) -eq 0 ] ; then \
 		if [ $(WRF_ELEC) -eq 0 ] ; then \
-		  ( cd phys ; $(MAKE) CF2=" " EF=" " ) ; \
+		  ( cd phys ; $(MAKE) CF2=" " EF=" " N2M="$(NSSL2M)" ) ; \
 		else \
-		  ( cd phys ; $(MAKE) EF="$(ELEC_FILES)" ) ; \
+		  ( cd phys ; $(MAKE) EF="$(ELEC_FILES)"  N2M="$(NSSL2ME)" ) ; \
 		fi \
 	else \
 		if [ $(WRF_ELEC) -eq 0 ] ; then \
-		  ( cd phys ; $(MAKE) CF2="$(CHEM_FILES2)" EF=" ") ; \
+		  ( cd phys ; $(MAKE) CF2="$(CHEM_FILES2)" EF=" "  N2M="$(NSSL2M)") ; \
 		else \
-		  ( cd phys ; $(MAKE) CF2="$(CHEM_FILES2)"  EF="$(ELEC_FILES)" ) ; \
+		  ( cd phys ; $(MAKE) CF2="$(CHEM_FILES2)"  EF="$(ELEC_FILES)"  N2M="$(NSSL2ME)" ) ; \
 		fi \
 	fi
 

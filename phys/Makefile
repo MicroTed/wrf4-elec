@@ -103,7 +103,7 @@ MODULES = \
         module_mp_jensen_ishmael.o \
         module_mp_morr_two_moment_aero.o \
 	module_mp_milbrandt2mom.o \
-	module_mp_nssl_2mom.o \
+                ${N2M}         \
 	module_mp_wdm5.o \
 	module_mp_wdm6.o \
 	module_mp_wdm7.o \
