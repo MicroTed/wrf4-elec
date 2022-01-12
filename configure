@@ -519,9 +519,9 @@ if [ -n "$WRF_NMM_CORE" -a -n "$WRF_CHEM" ]; then
 fi
 
 if [ -n "$WRF_ELEC" ] ; then
-  if [ $WRF_ELEC = 1 ] ; then
+  if [ $WRF_ELEC -ne 0 ] ; then
     echo Building WRF with electrification option
-    compileflags="${compileflags}!-DWRF_ELEC"
+    compileflags="${compileflags}!-DWRF_ELEC=${WRF_ELEC}"
     echo ${compileflags}
    if [ -n "$BOXMGLIBDIR" ] ; then
      echo "Will use BoxMG in dir: $BOXMGLIBDIR"

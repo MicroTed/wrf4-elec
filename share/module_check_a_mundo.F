@@ -3145,6 +3145,46 @@
       ENDDO
 
 !-----------------------------------------------------------------------
+! Check for electrification options with NSSL scheme
+!-----------------------------------------------------------------------
+#if ( (EM_CORE == 1) && (WRF_ELEC == 1) )
+     IF ( model_config_rec % elec_physics > 0 ) THEN
+      DO i = 1, model_config_rec % max_dom
+       IF ( .NOT. model_config_rec % grid_allowed(i) ) CYCLE
+       IF ( .not. ( model_config_rec % mp_physics(i) .EQ. NSSL_2MOM  .or. &
+                    model_config_rec % mp_physics(i) .EQ. NSSL_2MOMCCN ) ) THEN
+
+         wrf_err_message = '--- NOTE: Electrification only works with NSSL_2MOM or NSSL_2MOMCCN  ' 
+         CALL wrf_message ( wrf_err_message )
+!         model_config_rec % elec_physics = 0
+!         CALL wrf_error_fatal ( wrf_err_message )
+        ENDIF
+      ENDDO
+     ENDIF
+     
+     IF ( model_config_rec % max_dom > 1 ) THEN
+      DO i = 1, model_config_rec % max_dom - 1
+       IF ( .NOT. model_config_rec % grid_allowed(i) ) CYCLE
+       IF ( model_config_rec % nssl_ipelec(i) > 0 ) THEN
+         model_config_rec % nssl_ipelec(i) = 0
+         wrf_err_message = '--- NOTE: nssl_ipelec should only be nonzero on innermost domain, setting:  ' // &
+                           'nssl_ipelec = 0 on this domain '
+         CALL wrf_message ( wrf_err_message )
+       
+        ENDIF
+      ENDDO
+     ENDIF
+
+#else
+     IF ( model_config_rec % elec_physics > 0 ) THEN
+         wrf_err_message = '--- NOTE: WRF is not compiled for electrification, setting: ' // &
+          'elec_physics = 0'
+         CALL wrf_message_fatal ( wrf_err_message )
+       model_config_rec % elec_physics = 0
+     ENDIF
+#endif
+
+!-----------------------------------------------------------------------
 ! If a user selected LOGICAL fire-related switches, convert those to
 ! INTEGER for the package allocation assignment required in the 
 ! registry file.
