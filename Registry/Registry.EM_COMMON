@@ -1603,7 +1603,7 @@ state    real    itype_2          ikj     misc        1         -     hdu       
 state    real    itype_3          ikj     misc        1         -     hdu       "ice_type3"             "Diagnostic ice type cat 3 ISHMAEL microphysics"  ""
 
 # LIGHTNING NUDGING
-#state    real    ltg_dat        ij      misc        1         -      r         "ltg_dat"               "gridded lightning data"  "Flash per xkm x xkm per LAD_INT sec"
+state    real    ltg_dat        ij      misc        1         -      r         "ltg_dat"               "gridded lightning data"  "Flash per xkm x xkm per LAD_INT sec"
 # END LIGHTNING NUDGING
 state    real  NCA              ij      misc        1         -      r        "NCA"                   "COUNTER OF THE CLOUD RELAXATION TIME IN KF CUMULUS SCHEME"    ""      
 state    integer  LOWLYR        ij      misc        1         -     -         "LOWLYR"                "INDEX OF LOWEST MODEL LAYER ABOVE THE GROUND IN BMJ SCHEME"   ""      
@@ -3319,6 +3319,9 @@ package   les            ideal_case==9               -            -
 # WRF-Chem specific diagnostics
 package   clnatmdiag     calc_clean_atm_diag==1      -            state:SWUPTCLN,SWDNTCLN,SWUPBCLN,SWDNBCLN,LWUPTCLN,LWDNTCLN,LWUPBCLN,LWDNBCLN 
 
+# LIGHTNING NUDGING
+package   noltgnudge     nudge_lightning==0             -             -
+package   ltgnud         nudge_lightning==1             -             state:ltg_dat
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 ## communications                                               

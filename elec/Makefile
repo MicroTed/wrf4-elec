@@ -6,10 +6,10 @@ RM      =       rm -f
 
 MODULES =                                \
              module_commasmpi.o \
-             module_mp_boxmgsetup.o \
-             module_mp_screen.o \
-             module_mp_discharge.o \
-             module_mp_nudge_light.o
+             module_boxmgsetup.o \
+             module_screen.o \
+             module_discharge.o \
+             module_nudge_light.o
             
 LIBTARGET    =  elecphys
 TARGETDIR    =  ./

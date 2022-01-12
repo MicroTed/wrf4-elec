@@ -211,10 +211,10 @@ SUBROUTINE microphysics_driver(                                          &
 
 #ifdef WRF_ELEC 
 ! BOXMG Solver
-  USE module_mp_boxmgsetup
-  USE module_mp_discharge
-  USE module_mp_screen
-  USE module_mp_nudge_light
+  USE module_boxmgsetup
+  USE module_discharge
+  USE module_screen
+  USE module_nudge_light
 #endif
 
 

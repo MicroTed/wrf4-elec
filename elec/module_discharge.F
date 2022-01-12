@@ -1,7 +1,7 @@
 !
 #define FLOAT_PRECISION MPI_DOUBLE_PRECISION
 
-      Module  module_mp_discharge 
+      Module  module_discharge 
 #ifdef DM_PARALLEL
       USE module_dm, ONLY : &
          local_communicator, mytask, ntasks, ntasks_x, ntasks_y,mytask_x, mytask_y
@@ -865,4 +865,4 @@
 
       end subroutine light1d
 
-      end module module_mp_discharge
+      end module module_discharge

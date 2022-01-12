@@ -11,10 +11,10 @@ CHEM_FILES =	../chem/module_aerosols_sorgam.o \
 		../chem/module_aerosols_soa_vbs.o
 CHEM_FILES2 =	../chem/module_data_mosaic_asect.o
 ELEC_FILES = ../elec/module_commasmpi.o \
-             ../elec/module_mp_boxmgsetup.o \
-             ../elec/module_mp_screen.o \
-             ../elec/module_mp_discharge.o \
-             ../elec/module_mp_nudge_light.o \
+             ../elec/module_boxmgsetup.o \
+             ../elec/module_screen.o \
+             ../elec/module_discharge.o \
+             ../elec/module_nudge_light.o \
              ../elec/include_microphysics_driver_elec.F
 NSSL2ME = ../elec/module_mp_nssl_2mom_elec.o
 NSSL2M = module_mp_nssl_2mom.o

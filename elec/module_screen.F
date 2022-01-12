@@ -1,7 +1,7 @@
 !
 #define FLOAT_PRECISION MPI_DOUBLE_PRECISION
 
-      Module  module_mp_screen
+      Module  module_screen
 #ifdef DM_PARALLEL 
       USE module_dm, ONLY : &
          local_communicator, mytask, ntasks, ntasks_x, ntasks_y,mytask_x, mytask_y
@@ -128,9 +128,9 @@
       real t4(-ng+1:nx+ng,-ng+1:ny+ng,nz)
       real t5(-ng+1:nx+ng,-ng+1:ny+ng,nz)
       real t6(-ng+1:nx+ng,-ng+1:ny+ng,nz)
-      real t7(-ng+1:nx+ng,-ng+1:ny+ng,nz)
-      real t8(-ng+1:nx+ng,-ng+1:ny+ng,nz)
-      real t9(-ng+1:nx+ng,-ng+1:ny+ng,nz)
+!      real t7(-ng+1:nx+ng,-ng+1:ny+ng,nz)
+      real t8(-ng+1:nx+ng,-ng+1:ny+ng,nz) ! this could be a scalar value
+!      real t9(-ng+1:nx+ng,-ng+1:ny+ng,nz) ! not used
       real dz2(-ng+1:nx+ng,-ng+1:ny+ng,nz)
 !
       real pot(-ng+1:nx+ng,nz,-ng+1:ny+ng)
@@ -179,8 +179,11 @@
 !        ALLOCATE(zlayer(its-ghost:ite+ghost;jts-ghost:jte+ghost;kts:kte))
 
         t0(:,:,:)=0.0 ; t1(:,:,:)=0.0
-        t4(:,:,:)=0.0 ; t5(:,:,:)=0.0 ; t6(:,:,:)=0.0 ; t7(:,:,:)=0.0
-        t8(:,:,:)=0.0 ; t9(:,:,:)=0.0 ; dslay(:,:,:) = 0.0  
+        t4(:,:,:)=0.0 ; t5(:,:,:)=0.0 ; t6(:,:,:)=0.0 
+        ! t7(:,:,:)=0.0
+        t8(:,:,:)=0.0
+       ! t9(:,:,:)=0.0
+        dslay(:,:,:) = 0.0  
         ecnrml=0.0 ; eanrml =0.0 ;dslay(:,:,:)=0.0 ; zlayer(:,:,:)=0.0
         condc(:,:,:)=1.0e-15 ; conda(:,:,:)=1.0e-14 ; dzi2(:,:,:) = 0.0 
 
@@ -208,7 +211,7 @@
 
 !     NEED TO PLACE ALL WRF ARRAYS IN XYZ BEFORE CALLING THE MPI SEND_RCV STUFF...
 
-      kcldtop(:,:) = 0
+      kcldtop(:,:) = 1
       
       do kz = 1,nz
       do jy = 1,ny
@@ -618,7 +621,7 @@
 !
 !  z-direction  ! not MPI-ed
 !
-      IF ( kz .gt. 3 .and. kz .lt. nz-3*kstag .or. kcldtop(ix,jy) > 1  ) THEN
+      IF ( ( kz .gt. 3 .and. kz .lt. nz-3*kstag ) .or. kcldtop(ix,jy) > 3  ) THEN
 
         if ( t0(ix,jy,kz+kstag) .lt. qctol .and.     &
      &       t0(ix,jy,kz+kstag+1) .lt. qctol2 .and.   &
@@ -689,7 +692,7 @@
 !  t7 is the count of points with no cloud
 
 !
-      t7(ix,jy,kz) = ascl(ix)
+!      t7(ix,jy,kz) = ascl(ix)
 
 !
 !  now screening layer calculation
@@ -891,4 +894,4 @@
 !
 !
 !
-      end module module_mp_screen
+      end module module_screen

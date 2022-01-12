@@ -373,18 +373,20 @@ module_mp_thompson.o : ../frame/module_wrf_error.o \
 module_mp_nssl_2mom.o : ../frame/module_wrf_error.o \
 		../share/module_model_constants.o
 
+# WRF_ELEC files
 module_mp_nssl_2mom_elec.o : ../frame/module_wrf_error.o \
 		../share/module_model_constants.o
 
-module_mp_nudge_light.o : ../frame/module_dm.o ../frame/module_wrf_error.o
+module_nudge_light.o : ../frame/module_dm.o ../frame/module_wrf_error.o
 
-module_mp_boxmgsetup.o : ../frame/module_wrf_error.o 
+module_boxmgsetup.o : ../frame/module_wrf_error.o 
 
 module_commasmpi.o : ../frame/module_wrf_error.o
 
-module_mp_discharge.o : module_commasmpi.o ../frame/module_dm.o ../frame/module_wrf_error.o 
+module_discharge.o : module_commasmpi.o ../frame/module_dm.o ../frame/module_wrf_error.o 
 
-module_mp_screen.o : ../frame/module_dm.o module_commasmpi.o ../frame/module_wrf_error.o
+module_screen.o : ../frame/module_dm.o module_commasmpi.o ../frame/module_wrf_error.o
+# END WRF_ELEC files
 
 module_mp_fast_sbm.o : module_mp_radar.o
 

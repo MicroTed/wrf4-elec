@@ -135,6 +135,19 @@ SUBROUTINE solve_em ( grid , config_flags  &
    INTEGER, DIMENSION( num_chem ) :: adv_ct_indices
 #endif
 
+#if (WRF_ELEC == 1)
+! LIGHTNING NUDGING, Fierro et al. (2012, MWR)
+
+   REAL :: time_chk, time_chk2
+   INTEGER :: time_secs, light_assim_int !, light_assim_int_old
+   INTEGER, SAVE :: light_assim_int_old
+   REAL    :: ltg_val
+!   INTEGER, DIMENSION (grid%sm31:grid%em31, grid%sm32:grid%em32, grid%sm33:grid%em33) :: gridlight3d
+   CHARACTER :: char_assim_int*10, dom*5
+
+! END LIGHTNING NUDGING
+#endif
+
 ! storage for tendencies and decoupled state (generated from Registry)
 
 #include "i1_decl.inc"
@@ -315,6 +328,10 @@ SUBROUTINE solve_em ( grid , config_flags  &
 
    grid%itimestep = grid%itimestep + 1
    grid%dtbc = grid%dtbc + grid%dt
+
+#if (WRF_ELEC == 1)
+#include "../elec/include_solve_lightningnudge.F"
+#endif
 
    IF( coupler_on ) CALL cpl_store_input( grid, config_flags )
 
@@ -3817,11 +3834,11 @@ BENCH_START(micro_driver_tim)
       &        , qrcuten=grid%rqrcuten, qscuten=grid%rqscuten             &
       &        , qicuten=grid%rqicuten, qccuten=grid%rqccuten             &
 !--------------EXPLICIT LIGHTNING (Fierro et al. 2013, MWR)-----------------
-!      &        , RSCGHIS_2d=grid%rscghis_2d                               &
-!      &        , NONINDUC=grid%noninduc                                   &
-!      &        , nudge_lightning=grid%nudge_lightning                     & ! for lightning Qv nudging (Fierro et al. 2012, MWR)
-!      &        , GRIDLIGHT=grid%ltg_dat                                   & ! for lightning Qv nudging (Fierro et al. 2012, MWR)
 #ifdef WRF_ELEC
+      &        , RSCGHIS_2d=grid%rscghis_2d                               &
+      &        , NONINDUC=grid%noninduc                                   &
+      &        , nudge_lightning=grid%nudge_lightning                     & ! for lightning Qv nudging (Fierro et al. 2012, MWR)
+      &        , GRIDLIGHT=grid%ltg_dat                                   & ! for lightning Qv nudging (Fierro et al. 2012, MWR)
       &        , ELECMAG=grid%elecmag                                     &
       &        , ELECX=grid%elecx, F_ELECX=(size(grid%elecx,3) > 1)       &
       &        , ELECY=grid%elecy                                         &

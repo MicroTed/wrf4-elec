@@ -1,4 +1,4 @@
-       MODULE module_mp_nudge_light
+       MODULE module_nudge_light
 
 !      lightning assimilation subroutine - Fierro et al. (2012, MWR)
 
@@ -112,4 +112,4 @@
        
         RETURN
         END SUBROUTINE nudge_light
-        END MODULE module_mp_nudge_light
+        END MODULE module_nudge_light

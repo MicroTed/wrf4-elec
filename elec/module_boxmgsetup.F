@@ -15,7 +15,7 @@
 #define BOXMG 
 #endif
 
-       MODULE module_mp_boxmgsetup
+       MODULE module_boxmgsetup
 #ifdef DM_PARALLEL
       USE module_dm, ONLY : &
                   local_communicator, mytask, ntasks, ntasks_x, ntasks_y
@@ -1151,7 +1151,7 @@
 !
 !
 
-      END MODULE module_mp_boxmgsetup
+      END MODULE module_boxmgsetup
 
 ! ###############################################################
 ! ###############################################################
@@ -1747,7 +1747,7 @@
 !
 ! ==========================================================================
 
-      USE module_mp_boxmgsetup, Only: bmg_cycletype, bmg_maxiter, bmg_sep, bmg_cgsolve, bmg_tol
+      USE module_boxmgsetup, Only: bmg_cycletype, bmg_maxiter, bmg_sep, bmg_cgsolve, bmg_tol
 
 
       IMPLICIT NONE
@@ -7912,7 +7912,7 @@
       
 
 #endif
-!      END MODULE module_mp_boxmgsetup
+!      END MODULE module_boxmgsetup
 
 
 !-------------------------------------------------------------------------
