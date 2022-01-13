@@ -2148,6 +2148,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                                                        )
 
 #else
+        ELSE
         Call wrf_error_fatal( 'for elec_physics > 0, need to rebuild WRF with -DWRF_ELEC')
 #endif
 
@@ -2237,6 +2238,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 
     CASE (NSSL_2MOMCCN)
          CALL wrf_debug(100, 'microphysics_driver: calling nssl_2momccn mp=18')
+         write(0,*) 'elec_physics = ',elec_physics
          IF (PRESENT (QV_CURR) .AND.                           &
              PRESENT (QC_CURR) .AND. PRESENT (QNDROP_CURR)  .AND. &
              PRESENT (QR_CURR) .AND. PRESENT (QNR_CURR)  .AND. &
@@ -2397,6 +2399,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                                                        )
          CALL wrf_debug(100, 'microphysics_driver: after call nssl_2momccn with elec')
 #else
+        ELSE 
+        
         Call wrf_error_fatal( 'for elec_physics > 0, need to rebuild WRF with -DWRF_ELEC')
 #endif
          
