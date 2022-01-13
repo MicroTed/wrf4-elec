@@ -3179,7 +3179,7 @@
      IF ( model_config_rec % elec_physics > 0 ) THEN
          wrf_err_message = '--- NOTE: WRF is not compiled for electrification, setting: ' // &
           'elec_physics = 0'
-         CALL wrf_message_fatal ( wrf_err_message )
+         CALL wrf_message ( wrf_err_message )
        model_config_rec % elec_physics = 0
      ENDIF
 #endif

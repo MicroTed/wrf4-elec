@@ -79,9 +79,9 @@ SUBROUTINE microphysics_driver(                                          &
                       ,f_effr,f_ice_effr,f_tot_effr                      &
                       ,f_qic_effr,f_qip_effr,f_qid_effr                  &                 
                       ,scr,scw,sci,scs,sch,schl,sciona,sctot             &
-                      ,f_scr,f_scw,f_sci,f_scs,f_sch,f_schl,f_sciona     &
                       ,ipelectmp                                         & ! Explicit lightning namelist flags
 #ifdef WRF_ELEC 
+                      ,f_scr,f_scw,f_sci,f_scs,f_sch,f_schl,f_sciona     &
                       ,iscreen,lightradtmp,ibrkdtmp,ecrittmp,disfrac,idischarge   & ! Explicit lightning namelist flags
 #endif
                       ,nudge_lightning                                   & ! lightnign Qv nudging flag
@@ -109,9 +109,9 @@ SUBROUTINE microphysics_driver(                                          &
                       ,induc,pot,elecmag                                 &
                       ,elecx,f_elecx,elecy,elecz                         &
                       ,light,lightdens,lightdis                          &
-#endif
                       ,gridlight                                         &
                       ,noninduc,  rscghis_2d                             &
+#endif
                       ,rainnc,    rainncv                                &
                       ,snownc,    snowncv                                &
                       ,hailnc,    hailncv                                &
@@ -460,8 +460,8 @@ SUBROUTINE microphysics_driver(                                          &
   INTEGER,parameter :: iunit=6
   INTEGER :: mpi_error_code=1
 
-   INTEGER,    INTENT(IN   )    :: history_interval
-   REAL   ,    INTENT(IN   )    :: curr_secs 
+   INTEGER, optional, INTENT(IN   )    :: history_interval
+   REAL   , optional, INTENT(IN   )    :: curr_secs 
    TYPE(grid_config_rec_type),  INTENT(IN   ) , OPTIONAL   :: config_flags
    INTEGER,    INTENT(IN   )    :: mp_physics,elec_physics
    LOGICAL,    INTENT(IN   )    :: specified
@@ -666,9 +666,10 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    REAL, DIMENSION( ims:ime , kms:kme, jms:jme,1:2) :: scion ! local array for the driver- 1=-, 2=+
    REAL, DIMENSION( ims:ime , kms:kme, jms:jme,1:4) :: elec ! local array for the driver-only emag is used for I/O-ALWAYS USED IN 1D so NOT OPTIONAL !.
 ! End Explicit lightning
-#endif
 !   lightning nudging/assimilation
    REAL, OPTIONAL, DIMENSION( ims:ime, jms:jme ) ::      gridlight
+
+#endif
 
    LOGICAL,  OPTIONAL,   INTENT(IN   )    :: channel_switch
    REAL, OPTIONAL,  INTENT(INOUT   ) :: naer  ! aerosol number concentration (/kg)
@@ -2069,9 +2070,10 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                                                                     )
 
 
+#if ( WRF_ELEC >= 1 )
+
         ELSEIF ( elec_physics > 0 .and. f_scw ) THEN
 
-#if ( WRF_ELEC >= 1 )
          CALL nssl_2mom_driver(                          &
                      ITIMESTEP=itimestep,                &
                      TH=th,                              &
@@ -2317,9 +2319,9 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                   ITS=its,ITE=ite, JTS=jts,JTE=jte, KTS=kts,KTE=kte  &
                                                                     )
 
+#if ( WRF_ELEC == 1 )
          ELSEIF ( elec_physics > 0 .and. f_scw) THEN
 
-#if ( WRF_ELEC == 1 )
          CALL wrf_debug(100, 'microphysics_driver: calling nssl_2momccn with elec')
          CALL nssl_2mom_driver(                          &
                      ITIMESTEP=itimestep,                &
