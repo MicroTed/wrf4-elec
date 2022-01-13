@@ -28,9 +28,9 @@ state    real    elecx           ikj  misc    1         -     irh         "elecx
 state    real    elecy           ikj  misc    1         -     irh         "elecy"                  "EFIELD Y-Component"     "V m-1"
 state    real    elecz           ikj  misc    1         -     irh         "elecz"                  "EFIELD Z-Component"     "V m-1"
 state    real    pot             ikj  misc    1         -     irh         "pot"                    "POTENTIAL"     "V"
-state    real    light            ij  misc    1         -     irh         "light"                  "lightning flash"         "flash origin density"
-state    real    lightdens        ij  misc    1         -     irh         "lightdens"              "lightning flash density (raw)"    "flash column-1"
-state    real    lightfed         ij  misc    1         -     irh         "lightfed"               "normalized lightning flash extent density"   "flash column-1"
+state    real    light            ij  misc    1         -     irh         "light"                  "lightning flash initiations"         "flash origin density"
+state    real    lightdens        ij  misc    1         -     irh         "lightdens"              "lightning flash density"    "flash column-1"
+state    real    lightfod         ij  misc    1         -     irh         "lightfod"               "normalized lightning flash origin density"   "flash column-1"
 state    integer lightdis         ij  misc    1         -     irh         "lightdis"               "lightning source density"     "Source column-1"
 state    real    flshi           ikj  misc    1         -     irh         "flshi"                  "Lightning init points"     "count"
 state    real    flshn           ikj  misc    1         -     irh         "flshn"                  "Negative channels"     "count"
@@ -53,7 +53,7 @@ rconfig   integer  elec_physics           namelist,physics      1            0  
 
 # external WRF-ELEC package
 package   noelec             elec_physics==0             -             -
-package   eleclgt1d          elec_physics==1             -             scalar:scr,scw,sci,scs,sch,schl,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfed
-package   eleclgtmsz         elec_physics==2             -             scalar:scr,scw,sci,scs,sch,schl,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfed,flshi,flshn,flshp
-package   eleclgtmsznox      elec_physics==3             -             scalar:scr,scw,sci,scs,sch,schl,sciona,clnox;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfed,flshi,flshn,flshp
+package   eleclgt1d          elec_physics==1             -             scalar:scr,scw,sci,scs,sch,schl,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod
+package   eleclgtmsz         elec_physics==2             -             scalar:scr,scw,sci,scs,sch,schl,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod,flshi,flshn,flshp
+package   eleclgtmsznox      elec_physics==3             -             scalar:scr,scw,sci,scs,sch,schl,sciona,clnox;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod,flshi,flshn,flshp
 
