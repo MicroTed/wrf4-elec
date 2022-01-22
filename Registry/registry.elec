@@ -56,4 +56,8 @@ package   noelec             elec_physics==0             -             -
 package   eleclgt1d          elec_physics==1             -             scalar:scr,scw,sci,scs,sch,schl,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod
 package   eleclgtmsz         elec_physics==2             -             scalar:scr,scw,sci,scs,sch,schl,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod,flshi,flshn,flshp
 package   eleclgtmsznox      elec_physics==3             -             scalar:scr,scw,sci,scs,sch,schl,sciona,clnox;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod,flshi,flshn,flshp
+# for case of no hail (nssl_2momg)
+package   eleclgt1dg         elec_physics==11            -             scalar:scr,scw,sci,scs,sch,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod
+package   eleclgtmszg        elec_physics==12            -             scalar:scr,scw,sci,scs,sch,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod,flshi,flshn,flshp
+package   eleclgtmsznoxg     elec_physics==13            -             scalar:scr,scw,sci,scs,sch,sciona,clnox;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod,flshi,flshn,flshp
 

@@ -13,12 +13,13 @@
       subroutine light1d(iter,loccur,   &
      &   nor,nx,ny,nz      &
      &  ,dxx,dyy,lightrad,ibrkd,elght1,elgt1,dzz,sctot &
-     &  ,scw,scs,sci,scr,sch,schl &
-     &  ,qc,qs,qi,qr,qg,qh &
-     &  ,qnc,qns,qni,qnr,qng,qnh &
+     &  ,scw,scs,sci,scr,sch &
+     &  ,qc,qs,qi,qr,qg&
+     &  ,qnc,qns,qni,qnr,qng&
      &  ,elec,scion,sciona        &
      &  ,nbw,nbe,nbs,nbn   &
-     &  ,iunit, db,light,lightdens,etot,lightdis)
+     &  ,iunit, db,light,lightdens,etot,lightdis &
+     &  ,schl,qh,qnh  )
      
       implicit none
 

@@ -1,4 +1,5 @@
-       IF ( (mp_physics == NSSL_2MOM .or. mp_physics == NSSL_2MOMCCN ) .and. elec_physics > 0 ) THEN
+       IF ( (mp_physics == NSSL_2MOM .or. mp_physics == NSSL_2MOMG .or.  &
+             mp_physics == NSSL_2MOMCCN ) .and. elec_physics > 0 ) THEN
 
      if (ipelectmp.gt.0)  then ! 
 
@@ -12,6 +13,8 @@
       light(:,:)=0.
       lightdis(:,:)=0.
       lightdens(:,:)=0.
+       IF (idischarge.eq.1) lightfod(:,:) = 0.
+      
      endif
 
        IF ( num_tiles > 1 ) THEN
@@ -232,23 +235,49 @@
 
 !    Ziegler and MacGorman (1994,JAS) simple column discharge within cylinders
        
+     elec_select: SELECT CASE(mp_physics)
+
+      CASE ( NSSL_2MOMCCN, NSSL_2MOM )
       CALL  light1d(iter,loccur,   &
       &   nor,nxslm,nyslm,nzslm      &
       &  ,dx,dy,lightradtmp,ibrkdtmp,ecrittmp,disfrac,dz8w(its-1:ite+1,kts:kte,jts-1:jte+1),sctot(its-1:ite+1,kts:kte,jts-1:jte+1) &
       &  ,scw(its-1:ite+1,kts:kte,jts-1:jte+1),scs(its-1:ite+1,kts:kte,jts-1:jte+1),sci(its-1:ite+1,kts:kte,jts-1:jte+1)  &
-      &  ,scr(its-1:ite+1,kts:kte,jts-1:jte+1),sch(its-1:ite+1,kts:kte,jts-1:jte+1),schl(its-1:ite+1,kts:kte,jts-1:jte+1) &
+      &  ,scr(its-1:ite+1,kts:kte,jts-1:jte+1),sch(its-1:ite+1,kts:kte,jts-1:jte+1) &
       &  ,qc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qs_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
       &  ,qi_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
-      &  ,qg_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qh_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
+      &  ,qg_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
       &  ,qnc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qns_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
       &  ,qni_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qnr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
-      &  ,qng_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qnh_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
+      &  ,qng_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
+      &  ,elec(its-1:ite+1,kts:kte,jts-1:jte+1,4),scion(its-1:ite+1,kts:kte,jts-1:jte+1,1:2)                              &
+      &  ,sciona(its-1:ite+1,kts:kte,jts-1:jte+1) &
+      &  ,nbw,nbe,nbs,nbn                                                                                                 &
+      &  ,iunit, rho(its-1:ite+1,kts:kte,jts-1:jte+1)                           &
+      &  ,light(its-1:ite+1,jts-1:jte+1),lightdens(its-1:ite+1,jts-1:jte+1),etot,lightdis(its-1:ite+1,jts-1:jte+1) &
+      &  ,schl(its-1:ite+1,kts:kte,jts-1:jte+1),qh_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qnh_curr(its-1:ite+1,kts:kte,jts-1:jte+1)  )
+
+      CASE ( NSSL_2MOMG )
+      CALL  light1d(iter,loccur,   &
+      &   nor,nxslm,nyslm,nzslm      &
+      &  ,dx,dy,lightradtmp,ibrkdtmp,ecrittmp,disfrac,dz8w(its-1:ite+1,kts:kte,jts-1:jte+1),sctot(its-1:ite+1,kts:kte,jts-1:jte+1) &
+      &  ,scw(its-1:ite+1,kts:kte,jts-1:jte+1),scs(its-1:ite+1,kts:kte,jts-1:jte+1),sci(its-1:ite+1,kts:kte,jts-1:jte+1)  &
+      &  ,scr(its-1:ite+1,kts:kte,jts-1:jte+1),sch(its-1:ite+1,kts:kte,jts-1:jte+1)  &
+      &  ,qc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qs_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
+      &  ,qi_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
+      &  ,qg_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
+      &  ,qnc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qns_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
+      &  ,qni_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qnr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
+      &  ,qng_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
       &  ,elec(its-1:ite+1,kts:kte,jts-1:jte+1,4),scion(its-1:ite+1,kts:kte,jts-1:jte+1,1:2)                              &
       &  ,sciona(its-1:ite+1,kts:kte,jts-1:jte+1) &
       &  ,nbw,nbe,nbs,nbn                                                                                                 &
       &  ,iunit, rho(its-1:ite+1,kts:kte,jts-1:jte+1)                           &
       &  ,light(its-1:ite+1,jts-1:jte+1),lightdens(its-1:ite+1,jts-1:jte+1),etot,lightdis(its-1:ite+1,jts-1:jte+1))
 
+     END SELECT elec_select
+     
+        lightfod(:,:) = (dx**2/lightradtmp**2)*light(:,:)
+     
        ELSEIF (idischarge .eq. 2) THEN
         
         
@@ -272,7 +301,7 @@
        sch(i,k,j)=0.95*sch(i,k,j)
        sci(i,k,j)=0.95*sci(i,k,j)
        scs(i,k,j)=0.95*scs(i,k,j)
-       if (present(qh_curr)) schl(i,k,j)=0.95*schl(i,k,j)
+       if (f_schl) schl(i,k,j)=0.95*schl(i,k,j)
        enddo
        enddo
        enddo

@@ -1,6 +1,6 @@
 !WRF:MODEL_LAYER:PHYSICS
 
-! prepocessed on "Jan 11 2022" at "15:38:34"
+! prepocessed on "Jan 21 2022" at "16:14:27"
 
 
 
@@ -2238,7 +2238,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
       double precision :: grmass1,grmass2
       double precision :: hlmass1,hlmass2
       double precision :: wvol5,wvol10
-      real :: tmp,dv,dv1
+      real :: tmp,dv,dv1,tmpchg
       real :: rdt
       
       double precision :: dt1,dt2
@@ -2253,6 +2253,8 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
 
       real :: ycent, y, emissrate, emissrate0, emissrate1, z, fac, factot
       real :: fach(kts:kte)
+      
+      logical, parameter :: debugdriver = .false.
 
 #ifdef MPI
 
@@ -2269,7 +2271,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
 
       rdt = 1.0/dtp
       
-!      write(0,*) 'N2M: entering routine'
+     IF ( debugdriver ) write(0,*) 'N2M: entering routine'
 
      flag_qndrop = .false.
      flag_qnifa = .false.
@@ -2352,7 +2354,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
       makediag = diagflag .or. itimestep == 1
      ENDIF
 
-!     write(0,*) 'N2M: makediag = ',makediag
+     IF ( debugdriver ) write(0,*) 'N2M: makediag = ',makediag
      
      
      nx = ite-its+1
@@ -2527,7 +2529,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
       
 
 
-!     write(0,*) 'N2M: jy loop 1, lhl,na = ',lhl,na,present(qhl)
+     IF ( debugdriver ) write(0,*) 'N2M: jy loop 1, lhl,na = ',lhl,na,present(qhl)
 
           ancuten(its:ite,1,kts:kte,:) = 0.0
           thproclocal(:,:) = 0.0
@@ -2633,8 +2635,10 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
              an(ix,1,kz,lscni) = -Min(0.0,sciona(ix,kz,jy))*eci*dn(ix,kz,jy)
           sciona2d(ix,1,kz)   = sciona(ix,kz,jy)*dn(ix,kz,jy)
           
+          tmpchg = 0.0
+          IF ( lhl > 0 ) tmpchg = an(ix,1,kz,lschl)
           tmp =  dn(ix,kz,jy)*(an(ix,1,kz,lscw)+an(ix,1,kz,lscr)+an(ix,1,kz,lsci)+ &
-     &                         an(ix,1,kz,lscs)+an(ix,1,kz,lsch)+an(ix,1,kz,lschl)+ &
+     &                         an(ix,1,kz,lscs)+an(ix,1,kz,lsch)+tmpchg+ &
      &                         sciona(ix,kz,jy) )*dx*dy*dz(ix,kz,jy)
           chgneg1 = chgneg1 + Min(0.0, tmp)
           chgpos1 = chgpos1 + Max(0.0, tmp)
@@ -2834,7 +2838,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
 
 ! copy xfall to appropriate places...
 
-!     write(0,*) 'N2M: end sediment, jy = ',jy
+     IF ( debugdriver ) write(0,*) 'N2M: end sediment, jy = ',jy
 
        DO ix = its,ite
          IF ( lhl > 1 ) THEN
@@ -2894,15 +2898,12 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
       IF ( present(scw) .and. ipelec >= 1 ) THEN
        DO kz = kts,kte
         DO ix = its,ite
-        IF ( lhl > 1 ) THEN
+          tmpchg = 0.0
+          IF ( lhl > 0 ) tmpchg = an(ix,1,kz,lschl)
           tmp =   (an(ix,1,kz,lscw)+an(ix,1,kz,lscr)+an(ix,1,kz,lsci)+ &
-     &             an(ix,1,kz,lscs)+an(ix,1,kz,lsch)+an(ix,1,kz,lschl)+ &
+     &             an(ix,1,kz,lscs)+an(ix,1,kz,lsch)+tmpchg+ &
      &             (an(ix,1,kz,lscpi)-an(ix,1,kz,lscni))*ec )*dx*dy*dz(ix,kz,jy)
-        ELSE
-          tmp =   (an(ix,1,kz,lscw)+an(ix,1,kz,lscr)+an(ix,1,kz,lsci)+ &
-     &             an(ix,1,kz,lscs)+an(ix,1,kz,lsch)+ &
-     &             (an(ix,1,kz,lscpi)-an(ix,1,kz,lscni))*ec )*dx*dy*dz(ix,kz,jy)
-        ENDIF
+
           chgneg2 = chgneg2 + Min(0.0, tmp)
           chgpos2 = chgpos2 + Max(0.0, tmp)
 !          chgiona2 = chgiona2 + sciona(ix,kz,jy)*dn(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
@@ -2914,7 +2915,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
       IF ( isedonly /= 1 ) THEN
    ! call nssl_2mom_gs: main gather-scatter routine to calculate microphysics
 
-!     write(0,*) 'N2M: gs, jy = ',jy
+     IF ( debugdriver ) write(0,*) 'N2M: gs, jy = ',jy
 !      IF ( isedonly /= 2 ) THEN
 
 
@@ -3267,8 +3268,10 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
          ENDIF
 
 
+          tmpchg = 0.0
+          IF ( lhl > 0 ) tmpchg = an(ix,1,kz,lschl)
           tmp =  dn(ix,kz,jy)*(an(ix,1,kz,lscw)+an(ix,1,kz,lscr)+an(ix,1,kz,lsci)+ &
-     &                         an(ix,1,kz,lscs)+an(ix,1,kz,lsch)+an(ix,1,kz,lschl)+sciona(ix,kz,jy) )*dx*dy*dz(ix,kz,jy)
+     &                         an(ix,1,kz,lscs)+an(ix,1,kz,lsch)+tmpchg+sciona(ix,kz,jy) )*dx*dy*dz(ix,kz,jy)
           chgneg3 = chgneg3 + Min(0.0, tmp)
           chgpos3 = chgpos3 + Max(0.0, tmp)
           chgiona3 = chgiona3 + sciona(ix,kz,jy)*dn(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
@@ -3288,7 +3291,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
            scitot  = scitot + sci(ix,kz,jy)*dv
            scstot  = scstot + scs(ix,kz,jy)*dv
            schtot  = schtot + sch(ix,kz,jy)*dv
-           schltot = schltot + schl(ix,kz,jy)*dv
+           IF ( lhl > 1 ) schltot = schltot + schl(ix,kz,jy)*dv
            
            scwmax = Max( scwmax, scw(ix,kz,jy) )
            scrmax = Max( scrmax, scr(ix,kz,jy) )

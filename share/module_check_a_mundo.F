@@ -3152,12 +3152,19 @@
       DO i = 1, model_config_rec % max_dom
        IF ( .NOT. model_config_rec % grid_allowed(i) ) CYCLE
        IF ( .not. ( model_config_rec % mp_physics(i) .EQ. NSSL_2MOM  .or. &
+                    model_config_rec % mp_physics(i) .EQ. NSSL_2MOMG .or. &
                     model_config_rec % mp_physics(i) .EQ. NSSL_2MOMCCN ) ) THEN
 
          wrf_err_message = '--- NOTE: Electrification only works with NSSL_2MOM or NSSL_2MOMCCN  ' 
          CALL wrf_message ( wrf_err_message )
 !         model_config_rec % elec_physics = 0
 !         CALL wrf_error_fatal ( wrf_err_message )
+        ENDIF
+        IF ( model_config_rec % mp_physics(i) .EQ. NSSL_2MOMG ) THEN
+          ! make sure to use option that turns off hail charge density
+          IF ( model_config_rec % elec_physics > 0 .and. model_config_rec % elec_physics < 5  ) THEN 
+            model_config_rec % elec_physics = model_config_rec % elec_physics + 10
+          ENDIF
         ENDIF
       ENDDO
      ENDIF

@@ -3848,6 +3848,7 @@ BENCH_START(micro_driver_tim)
       &        , LIGHT=grid%light                                         &
       &        , LIGHTDENS=grid%lightdens                                 &
       &        , LIGHTDIS=grid%lightdis                                   &
+      &        , LIGHTFOD=grid%lightfod                                   &
       &        , SCR=scalar(ims,kms,jms,P_SCR), F_SCR=F_SCR               & 
       &        , SCW=scalar(ims,kms,jms,P_SCW), F_SCW=F_SCW               & 
       &        , SCI=scalar(ims,kms,jms,P_SCI), F_SCI=F_SCI               &  
