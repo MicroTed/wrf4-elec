@@ -43,10 +43,15 @@ rconfig   integer  nssl_ipelec            namelist,physics      max_domains   0 
 rconfig   integer  nssl_isaund            namelist,physics      1             12      rh       "Charge separation selection"  ""      ""
 rconfig   integer  nssl_iscreen           namelist,physics      1             0       rh       "Screening layer parameterization flag"  ""      ""
 rconfig   real     nssl_lightrad          namelist,physics      1             12000   rh       "discharge cylinder radius (m)"  ""      ""
-rconfig   integer  nssl_idischarge        namelist,physics      1             1       rh       "lightning discharge flag"  ""      ""
+#rconfig   integer  nssl_idischarge        namelist,physics      1             1       rh       "lightning discharge flag"  ""      ""
 rconfig   integer  nssl_ibrkd             namelist,physics      1             4       rh       "Critical Breakeven Efield profile selection"  ""      ""
+rconfig   real     nssl_elgtfestop        namelist,physics      1             0.8     rh       "3D lightning initial channel stopping fraction"  ""      ""
 rconfig   real     nssl_ecrit             namelist,physics      1             120000  rh       "Critical Breakeven Efield magnitude for discharge (V/m) assuming height-constant Ecrit profile"  ""      ""
 rconfig   real     nssl_disfrac           namelist,physics      1             0.3     rh       "percentile of charge removed upon discharge (BLM)"  ""      ""
+rconfig   real     nssl_einternal         namelist,physics      1           200.0     rh       "Lightning channel internal field (MSZ)"  ""      ""
+rconfig   real     nssl_tgrnd             namelist,physics      1           266.16    rh       "Temperature threshold for CG (MSZ)"  ""      ""
+rconfig   real     nssl_zgrnd             namelist,physics      1             -1.     rh       "Height threshold for CG (MSZ)"  ""      ""
+rconfig   integer  nssl_clnox             namelist,physics      1             0       rh       "Lightning NOX prediction flag"  ""      ""
 # end Explicit lightning
 
 rconfig   integer  elec_physics           namelist,physics      1            0       irh       "elec_physics"            ""      ""
@@ -54,10 +59,13 @@ rconfig   integer  elec_physics           namelist,physics      1            0  
 # external WRF-ELEC package
 package   noelec             elec_physics==0             -             -
 package   eleclgt1d          elec_physics==1             -             scalar:scr,scw,sci,scs,sch,schl,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod
-package   eleclgtmsz         elec_physics==2             -             scalar:scr,scw,sci,scs,sch,schl,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod,flshi,flshn,flshp
-package   eleclgtmsznox      elec_physics==3             -             scalar:scr,scw,sci,scs,sch,schl,sciona,clnox;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod,flshi,flshn,flshp
+package   eleclgt3dmsz       elec_physics==2             -             scalar:scr,scw,sci,scs,sch,schl,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod,flshi,flshn,flshp
+#package   eleclgtmsznox      elec_physics==3             -             scalar:scr,scw,sci,scs,sch,schl,sciona,clnox;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod,flshi,flshn,flshp
 # for case of no hail (nssl_2momg)
 package   eleclgt1dg         elec_physics==11            -             scalar:scr,scw,sci,scs,sch,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod
-package   eleclgtmszg        elec_physics==12            -             scalar:scr,scw,sci,scs,sch,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod,flshi,flshn,flshp
-package   eleclgtmsznoxg     elec_physics==13            -             scalar:scr,scw,sci,scs,sch,sciona,clnox;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod,flshi,flshn,flshp
+package   eleclgt3dmszg      elec_physics==12            -             scalar:scr,scw,sci,scs,sch,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod,flshi,flshn,flshp
+#package   eleclgtmsznoxg     elec_physics==13            -             scalar:scr,scw,sci,scs,sch,sciona,clnox;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod,flshi,flshn,flshp
+
+package nssl_cnox_off nssl_clnox==0   -   -
+package nssl_cnox_on  nssl_clnox==1   -   scalar:clnox
 

@@ -11,15 +11,11 @@
       CONTAINS
 
       subroutine light1d(iter,loccur,   &
-     &   nor,nx,ny,nz      &
+     &   nor,nx,ny,nz,ngx1,ngx2,ngy1,ngy2      &
      &  ,dxx,dyy,lightrad,ibrkd,elght1,elgt1,dzz,sctot &
-     &  ,scw,scs,sci,scr,sch &
-     &  ,qc,qs,qi,qr,qg&
-     &  ,qnc,qns,qni,qnr,qng&
-     &  ,elec,scion,sciona        &
+     &  ,elec,sciona        &
      &  ,nbw,nbe,nbs,nbn   &
-     &  ,iunit, db,light,lightdens,etot,lightdis &
-     &  ,schl,qh,qnh  )
+     &  ,iunit, db,light,lightdens,etot,lightdis )
      
       implicit none
 
@@ -28,18 +24,26 @@
 #endif
       
       integer iunit,tag2,iter,loccur
-      real elec(0:nx+1,nz,0:ny+1) 
-      real scion(0:nx+1,nz,0:ny+1,2)  ! 2=+, 1=- 
-      real dzz(0:nx+1,nz,0:ny+1),dxx,dyy   
-      real db(0:nx+1,nz,0:ny+1)
+      integer ngx1,ngx2,ngy1,ngy2
+      integer nor,nx,ny,nz
+!      real elec(0:nx+1,nz,0:ny+1) 
+!      real scion(0:nx+1,nz,0:ny+1,2)  ! 2=+, 1=- 
+!      real sciona(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!      real dzz(0:nx+1,nz,0:ny+1),dxx,dyy   
+!      real db(0:nx+1,nz,0:ny+1)
+      real elec(-ngx1:nx+ngx2,nz+1,-ngy1:ny+ngy2)
+      real sciona(-ngx1:nx+ngx2,nz+1,-ngy1:ny+ngy2)
+      real dzz(-ngx1:nx+ngx2,nz+1,-ngy1:ny+ngy2),dxx,dyy   
+      real db(-ngx1:nx+ngx2,nz+1,-ngy1:ny+ngy2)
+      real sctot(-ngx1:nx+ngx2,nz+1,-ngy1:ny+ngy2)
+!      real sctot(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
       integer, parameter    :: ng1 = 1
       integer nbw,nbe,nbs,nbn
       
       double precision chg,chgfracn,chgfracp,chgneg,chgpos ! total net negative/positive charge in storm (not including corona)
-      real  :: chgmax
+      real  :: chgmax, scionatmp
       
       integer ix,jy,kz,kz1,i,j
-      integer nor,nx,ny,nz
       real pi
       integer ietotx,ietoty,ietotz
 
@@ -68,28 +72,26 @@
 
       real elgt,temp
       double precision etot
-      real sctot(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real sciona(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real sch(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real,optional :: schl(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real scw(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real scr(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real sci(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real scs(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-
-      real qg(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real,optional :: qh(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qr(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qc(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qi(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qs(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      
-      real qng(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real,optional :: qnh(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qnr(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qnc(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qni(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qns(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real sch(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real,optional :: schl(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real scw(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real scr(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real sci(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real scs(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!
+!     real qg(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real,optional :: qh(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qr(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qc(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qi(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qs(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     
+!     real qng(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real,optional :: qnh(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qnr(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qnc(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qni(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qns(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
 
       real frachl
       real frach
@@ -100,9 +102,13 @@
       real fractot 
       double precision dv,deninv, tmp
 
-      real :: light(-nbw:nx+1+nbe,-nbs:ny+1+nbn)
-      real :: lightdens(-nbw:nx+1+nbe,-nbs:ny+1+nbn)
-      integer :: lightdis(-nbw:nx+1+nbe,-nbs:ny+1+nbn)
+!      real :: light(-nbw:nx+1+nbe,-nbs:ny+1+nbn)
+!      real :: lightdens(-nbw:nx+1+nbe,-nbs:ny+1+nbn)
+!      integer :: lightdis(-nbw:nx+1+nbe,-nbs:ny+1+nbn)
+
+      real :: light(-ngx1:nx+ngx2,-ngy1:ny+ngy2)
+      real :: lightdens(-ngx1:nx+ngx2,-ngy1:ny+ngy2)
+      integer :: lightdis(-ngx1:nx+ngx2,-ngy1:ny+ngy2)
          
        real,allocatable,save :: ebrkdp(:,:,:),ebrkd(:,:,:),zlev(:,:,:)
  
@@ -536,7 +542,7 @@
 !      what this does: if amount of +/- charge are comparable, then just take 30% of max . IF much more of one polarity, will take just the min of (chgpos, Abs(chgneg))
 
 
-      IF ( .false. ) THEN
+     IF ( .false. ) THEN !{
       ! original scheme to set reduction fraction
       chg = elgt1*Max(chgpos, Abs(chgneg))
 !      chg = (1.0 - elgt1)*Max(chgpos, Abs(chgneg))
@@ -557,7 +563,7 @@
       y=0.
       endif
      
-     ELSE
+     ELSE !  }{
      ! newer version that tries to offset net charge within the discharge regions
       chg = elgt1*Max(totpos1, Abs(totneg1))
 !      chgfracn = elgt1*Abs(totneg1)
@@ -577,15 +583,15 @@
     !  IF ( chgfracn .gt. 0.5*Abs(chgneg) ) chgfracn = 0.5*Abs(chgneg)
 
       if (abs(totneg1).gt.0.) then
-      x = (chgneg+chgfracn)/chgneg
+        x = (chgneg+chgfracn)/chgneg
       else
-      x=0.
+        x=0.
       endif
 
       if (abs(totpos1).gt.0.) then 
-      y = (chgpos-chgfracp)/(Abs(chgpos))
+        y = (chgpos-chgfracp)/(Abs(chgpos))
       else
-      y=0.
+        y=0.
       endif
       
 !        IF ( x > 0.9 .or. y > 0.9 ) THEN
@@ -593,32 +599,32 @@
 !          y = y * 0.9/(Max(x,y))
 !        ENDIF
 
-        IF ( x < 0.1 .or. y < 0.1 ) THEN ! use old method
+       IF ( x < 0.1 .or. y < 0.1 ) THEN ! { use old method
          write(0,*) 'small X,Y: ', x,y,chg,chgpos,chgneg,totpos1,totneg1
-      chg = elgt1*Max(chgpos, Abs(chgneg))
-!      chg = (1.0 - elgt1)*Max(chgpos, Abs(chgneg))
-      IF ( chg .gt. chgpos ) chg = chgpos
-      IF ( chg .gt. Abs(chgneg) ) chg = Abs(chgneg)
+         chg = elgt1*Max(chgpos, Abs(chgneg))
+!        chg = (1.0 - elgt1)*Max(chgpos, Abs(chgneg))
+         IF ( chg .gt. chgpos ) chg = chgpos
+         IF ( chg .gt. Abs(chgneg) ) chg = Abs(chgneg)
 
-      if (abs(chgneg).gt.0.) then
-!      x = chg/(Abs(chgneg)) 
-      x = (Abs(chgneg)-chg)/(Abs(chgneg)) 
-      else
-      x=0.
-      endif
+         if (abs(chgneg).gt.0.) then
+!         x = chg/(Abs(chgneg)) 
+          x = (Abs(chgneg)-chg)/(Abs(chgneg)) 
+         else
+          x=0.
+         endif
 
-      if (abs(chgpos).gt.0.) then 
-!      y = chg/(Abs(chgpos))
-      y = (chgpos-chg)/(Abs(chgpos))
-      else
-      y=0.
-      endif
-        ENDIF
+         if (abs(chgpos).gt.0.) then 
+!          y = chg/(Abs(chgpos))
+          y = (chgpos-chg)/(Abs(chgpos))
+         else
+          y=0.
+         endif
+       ENDIF !}
       
-      ENDIF
+      ENDIF ! }
 
-      write(0,*) 'X,Y', x,y,chg,chgpos,chgneg,totpos1,totneg1
-      write(0,*) 'chgfracn,chgfracp = ',chgfracn,chgfracp
+!      write(0,*) 'X,Y', x,y,chg,chgpos,chgneg,totpos1,totneg1
+!      write(0,*) 'chgfracn,chgfracp = ',chgfracn,chgfracp
 
        totneg2 = 0.0
        totpos2 = 0.0
@@ -668,20 +674,25 @@
 
        IF ( scdisch(ix,jy,kz) /= 0.0 ) THEN
 
-        IF ( Abs(scdisch(ix,jy,kz)) > 0.1*chgthr ) lightdis(ix,jy) = lightdis(ix,jy) + 1
+         IF ( Abs(scdisch(ix,jy,kz)) > 0.1*chgthr ) lightdis(ix,jy) = lightdis(ix,jy) + 1
        
        IF ( .true. ) THEN ! put the lightning charge into sciona, which is then distributed to hydrometeors in the ionattach subroutine
        
         
-      if (sctot(ix,kz,jy) .gt.  chgthr) sciona(ix,kz,jy)=sciona(ix,kz,jy)-scdisch(ix,jy,kz)
-      if (sctot(ix,kz,jy) .lt. -chgthr) sciona(ix,kz,jy)=sciona(ix,kz,jy)+scdisch(ix,jy,kz)
+         scionatmp = sciona(ix,kz,jy)
+         if (sctot(ix,kz,jy) .gt.  chgthr) sciona(ix,kz,jy)=sciona(ix,kz,jy)-scdisch(ix,jy,kz)
+         if (sctot(ix,kz,jy) .lt. -chgthr) sciona(ix,kz,jy)=sciona(ix,kz,jy)+scdisch(ix,jy,kz)
+         
+         ! update the net charge. Could instead set scionatmp to +/- scdisch(ix,jy,kz) and add that to both sctot and sciona
+         sctot(ix,kz,jy) = sctot(ix,kz,jy) + db(ix,kz,jy)*( sciona(ix,kz,jy) - scionatmp )
       
-        IF ( present( schl ) ) THEN
-          sctot(ix,kz,jy) = db(ix,kz,jy)*(schl(ix,kz,jy)+sch(ix,kz,jy)+scr(ix,kz,jy)+sci(ix,kz,jy)+scs(ix,kz,jy)+scw(ix,kz,jy)+sciona(ix,kz,jy))
-        ELSE
-          sctot(ix,kz,jy) = db(ix,kz,jy)*(sch(ix,kz,jy)+scr(ix,kz,jy)+sci(ix,kz,jy)+scs(ix,kz,jy)+scw(ix,kz,jy)+sciona(ix,kz,jy))
-        ENDIF
-       ELSE
+!         IF ( present( schl ) ) THEN
+!           sctot(ix,kz,jy) = db(ix,kz,jy)*(schl(ix,kz,jy)+sch(ix,kz,jy)+scr(ix,kz,jy)+sci(ix,kz,jy)+scs(ix,kz,jy)+scw(ix,kz,jy)+sciona(ix,kz,jy))
+!         ELSE
+!           sctot(ix,kz,jy) = db(ix,kz,jy)*(sch(ix,kz,jy)+scr(ix,kz,jy)+sci(ix,kz,jy)+scs(ix,kz,jy)+scw(ix,kz,jy)+sciona(ix,kz,jy))
+!         ENDIF
+
+       ELSE ! obsolete code attaching lightning charge to hydrometeors
 
 !     compute area fraction Ax/sum(Ax). where Ax=(Qx/rhox)**2/3 * Nx 
 !   but qnr etc. is N/rhoair, and need to convert scdisch to C/kg
@@ -690,80 +701,80 @@
     
 
 
-      fracs = 0.0
-      fraci = 0.0
-      frach = 0.0
-      fracw = 0.0
-      fracr = 0.0
-      frachl = 0.0
-      if ( qs(ix,kz,jy).gt.qmin .and. qns(ix,kz,jy) > 1.e-9 ) fracs=((qs(ix,kz,jy)/rhos)**(2./3.) ) * qns(ix,kz,jy)**(1./3.)
-      if ( qi(ix,kz,jy).gt.qmin .and. qni(ix,kz,jy) > 1.e-9 ) fraci=((qi(ix,kz,jy)/rhoi)**(2./3.) ) * qni(ix,kz,jy)**(1./3.)
-      if ( qg(ix,kz,jy).gt.qmin .and. qng(ix,kz,jy) > 1.e-9 ) frach=((qg(ix,kz,jy)/rhog)**(2./3.) ) * qng(ix,kz,jy)**(1./3.)
-      if ( qc(ix,kz,jy).gt.qmin .and. qnc(ix,kz,jy) > 1.e-9 ) fracw=((qc(ix,kz,jy)/rhow)**(2./3.) ) * qnc(ix,kz,jy)**(1./3.)
-      if ( qr(ix,kz,jy).gt.qmin .and. qnr(ix,kz,jy) > 1.e-9 ) fracr=((qr(ix,kz,jy)/rhor)**(2./3.) ) * qnr(ix,kz,jy)**(1./3.)
-
-      deninv = 1. ! /db(ix,kz,jy)
-      fractot=fracs+fraci+frach+fracr+fracw
-
-
-      if (present(qh)) then
-        IF ( qh(ix,kz,jy).gt.qmin .and. qns(ix,kz,jy) > 1.e-9 ) frachl=((qh(ix,kz,jy)/rhoh)**2./3. ) * qnh(ix,kz,jy)**(1./3.)
-        fractot = fractot + frachl
-      endif
-
-     
-      IF ( fractot > 0.0 ) THEN
-!'     reduce/redistribute scdisch on scx based on area fraction 
-   
-      if (qs(ix,kz,jy).gt.qmin) then ! avoid division by zero if fractot = 0 because qx=0
-      if (sctot(ix,kz,jy) .gt.  chgthr) scs(ix,kz,jy)=scs(ix,kz,jy)-scdisch(ix,jy,kz)*(fracs/fractot)
-      if (sctot(ix,kz,jy) .lt. -chgthr) scs(ix,kz,jy)=scs(ix,kz,jy)+scdisch(ix,jy,kz)*(fracs/fractot)
-      endif
-
-      if (qi(ix,kz,jy).gt.qmin) then
-      if (sctot(ix,kz,jy) .gt.  chgthr) sci(ix,kz,jy)=sci(ix,kz,jy)-scdisch(ix,jy,kz)*(fraci/fractot)
-      if (sctot(ix,kz,jy) .lt. -chgthr) sci(ix,kz,jy)=sci(ix,kz,jy)+scdisch(ix,jy,kz)*(fraci/fractot)
-      endif
-
-      if (qr(ix,kz,jy).gt.qmin) then
-      if (sctot(ix,kz,jy) .gt.  chgthr) scr(ix,kz,jy)=scr(ix,kz,jy)-scdisch(ix,jy,kz)*(fracr/fractot)
-      if (sctot(ix,kz,jy) .lt. -chgthr) scr(ix,kz,jy)=scr(ix,kz,jy)+scdisch(ix,jy,kz)*(fracr/fractot)
-      endif
-
-      if (qg(ix,kz,jy).gt.qmin) then
-       tmp = sch(ix,kz,jy)
-      if (sctot(ix,kz,jy) .gt.  chgthr) sch(ix,kz,jy)=sch(ix,kz,jy)-scdisch(ix,jy,kz)*(frach/fractot)
-      if (sctot(ix,kz,jy) .lt. -chgthr) sch(ix,kz,jy)=sch(ix,kz,jy)+scdisch(ix,jy,kz)*(frach/fractot)
-!            IF ( .not. ( sch(ix,kz,jy) > -1.e-6 .and. sch(ix,kz,jy) < 1.e-6 ) ) THEN
-!              write(0,*) 'discharge: bad sch! ix,kz,jy, sch = ',ix,kz,jy,tmp,sch(ix,kz,jy),qg(ix,kz,jy),qng(ix,kz,jy)
-!              write(0,*) 'scdisch(ix,jy,kz),frach,fractot,rhog: ',scdisch(ix,jy,kz),frach,fractot,rhog
-!              write(0,*) 'parts= ',(qg(ix,kz,jy)/rhog)**(2./3.),qng(ix,kz,jy)**(1./3.), (qg(ix,kz,jy)/rhog)**(2./3.)*qng(ix,kz,jy)**(1./3.)
-!              write(0,*) 'fracs,fraci,frach,fracw,fracr,frachl: ',fracs,fraci,frach,fracw,fracr,frachl
-!              STOP
-!            ENDIF
-      endif
-
-      if (qc(ix,kz,jy).gt.qmin) then
-      if (sctot(ix,kz,jy) .gt.  chgthr) scw(ix,kz,jy)=scw(ix,kz,jy)-scdisch(ix,jy,kz)*(fracw/fractot)
-      if (sctot(ix,kz,jy) .lt. -chgthr) scw(ix,kz,jy)=scw(ix,kz,jy)+scdisch(ix,jy,kz)*(fracw/fractot)
-      endif
-   
-      if (present(qh)) then
-      if (qh(ix,kz,jy).gt.qmin) then
-      if (sctot(ix,kz,jy) .gt.  chgthr) schl(ix,kz,jy)=schl(ix,kz,jy)-scdisch(ix,jy,kz)*(frachl/fractot)
-      if (sctot(ix,kz,jy) .lt. -chgthr) schl(ix,kz,jy)=schl(ix,kz,jy)+scdisch(ix,jy,kz)*(frachl/fractot)
-      endif
-      endif
-      
-       sctot(ix,kz,jy) = db(ix,kz,jy)*(sch(ix,kz,jy)+scr(ix,kz,jy)+sci(ix,kz,jy)+scs(ix,kz,jy)+scw(ix,kz,jy)+sciona(ix,kz,jy))
-       if (present(qh)) sctot(ix,kz,jy)=sctot(ix,kz,jy)+db(ix,kz,jy)*schl(ix,kz,jy)
-
-      ELSE
-      ! have scdisch /= 0, but fractot=0
-       chglost = chglost + scdisch(ix,jy,kz)*dv*db(ix,kz,jy)
-      
-
-      ENDIF ! fractot > 0.0
+!     fracs = 0.0
+!     fraci = 0.0
+!     frach = 0.0
+!     fracw = 0.0
+!     fracr = 0.0
+!     frachl = 0.0
+!     if ( qs(ix,kz,jy).gt.qmin .and. qns(ix,kz,jy) > 1.e-9 ) fracs=((qs(ix,kz,jy)/rhos)**(2./3.) ) * qns(ix,kz,jy)**(1./3.)
+!     if ( qi(ix,kz,jy).gt.qmin .and. qni(ix,kz,jy) > 1.e-9 ) fraci=((qi(ix,kz,jy)/rhoi)**(2./3.) ) * qni(ix,kz,jy)**(1./3.)
+!     if ( qg(ix,kz,jy).gt.qmin .and. qng(ix,kz,jy) > 1.e-9 ) frach=((qg(ix,kz,jy)/rhog)**(2./3.) ) * qng(ix,kz,jy)**(1./3.)
+!     if ( qc(ix,kz,jy).gt.qmin .and. qnc(ix,kz,jy) > 1.e-9 ) fracw=((qc(ix,kz,jy)/rhow)**(2./3.) ) * qnc(ix,kz,jy)**(1./3.)
+!     if ( qr(ix,kz,jy).gt.qmin .and. qnr(ix,kz,jy) > 1.e-9 ) fracr=((qr(ix,kz,jy)/rhor)**(2./3.) ) * qnr(ix,kz,jy)**(1./3.)
+!
+!     deninv = 1. ! /db(ix,kz,jy)
+!     fractot=fracs+fraci+frach+fracr+fracw
+!
+!
+!     if (present(qh)) then
+!       IF ( qh(ix,kz,jy).gt.qmin .and. qns(ix,kz,jy) > 1.e-9 ) frachl=((qh(ix,kz,jy)/rhoh)**2./3. ) * qnh(ix,kz,jy)**(1./3.)
+!       fractot = fractot + frachl
+!     endif
+!
+!    
+!     IF ( fractot > 0.0 ) THEN
+!!'     reduce/redistribute scdisch on scx based on area fraction 
+!  
+!     if (qs(ix,kz,jy).gt.qmin) then ! avoid division by zero if fractot = 0 because qx=0
+!     if (sctot(ix,kz,jy) .gt.  chgthr) scs(ix,kz,jy)=scs(ix,kz,jy)-scdisch(ix,jy,kz)*(fracs/fractot)
+!     if (sctot(ix,kz,jy) .lt. -chgthr) scs(ix,kz,jy)=scs(ix,kz,jy)+scdisch(ix,jy,kz)*(fracs/fractot)
+!     endif
+!
+!     if (qi(ix,kz,jy).gt.qmin) then
+!     if (sctot(ix,kz,jy) .gt.  chgthr) sci(ix,kz,jy)=sci(ix,kz,jy)-scdisch(ix,jy,kz)*(fraci/fractot)
+!     if (sctot(ix,kz,jy) .lt. -chgthr) sci(ix,kz,jy)=sci(ix,kz,jy)+scdisch(ix,jy,kz)*(fraci/fractot)
+!     endif
+!
+!     if (qr(ix,kz,jy).gt.qmin) then
+!     if (sctot(ix,kz,jy) .gt.  chgthr) scr(ix,kz,jy)=scr(ix,kz,jy)-scdisch(ix,jy,kz)*(fracr/fractot)
+!     if (sctot(ix,kz,jy) .lt. -chgthr) scr(ix,kz,jy)=scr(ix,kz,jy)+scdisch(ix,jy,kz)*(fracr/fractot)
+!     endif
+!
+!     if (qg(ix,kz,jy).gt.qmin) then
+!      tmp = sch(ix,kz,jy)
+!     if (sctot(ix,kz,jy) .gt.  chgthr) sch(ix,kz,jy)=sch(ix,kz,jy)-scdisch(ix,jy,kz)*(frach/fractot)
+!     if (sctot(ix,kz,jy) .lt. -chgthr) sch(ix,kz,jy)=sch(ix,kz,jy)+scdisch(ix,jy,kz)*(frach/fractot)
+!!            IF ( .not. ( sch(ix,kz,jy) > -1.e-6 .and. sch(ix,kz,jy) < 1.e-6 ) ) THEN
+!!              write(0,*) 'discharge: bad sch! ix,kz,jy, sch = ',ix,kz,jy,tmp,sch(ix,kz,jy),qg(ix,kz,jy),qng(ix,kz,jy)
+!!              write(0,*) 'scdisch(ix,jy,kz),frach,fractot,rhog: ',scdisch(ix,jy,kz),frach,fractot,rhog
+!!              write(0,*) 'parts= ',(qg(ix,kz,jy)/rhog)**(2./3.),qng(ix,kz,jy)**(1./3.), (qg(ix,kz,jy)/rhog)**(2./3.)*qng(ix,kz,jy)**(1./3.)
+!!              write(0,*) 'fracs,fraci,frach,fracw,fracr,frachl: ',fracs,fraci,frach,fracw,fracr,frachl
+!!              STOP
+!!            ENDIF
+!     endif
+!
+!     if (qc(ix,kz,jy).gt.qmin) then
+!     if (sctot(ix,kz,jy) .gt.  chgthr) scw(ix,kz,jy)=scw(ix,kz,jy)-scdisch(ix,jy,kz)*(fracw/fractot)
+!     if (sctot(ix,kz,jy) .lt. -chgthr) scw(ix,kz,jy)=scw(ix,kz,jy)+scdisch(ix,jy,kz)*(fracw/fractot)
+!     endif
+!  
+!     if (present(qh)) then
+!     if (qh(ix,kz,jy).gt.qmin) then
+!     if (sctot(ix,kz,jy) .gt.  chgthr) schl(ix,kz,jy)=schl(ix,kz,jy)-scdisch(ix,jy,kz)*(frachl/fractot)
+!     if (sctot(ix,kz,jy) .lt. -chgthr) schl(ix,kz,jy)=schl(ix,kz,jy)+scdisch(ix,jy,kz)*(frachl/fractot)
+!     endif
+!     endif
+!     
+!      sctot(ix,kz,jy) = db(ix,kz,jy)*(sch(ix,kz,jy)+scr(ix,kz,jy)+sci(ix,kz,jy)+scs(ix,kz,jy)+scw(ix,kz,jy)+sciona(ix,kz,jy))
+!      if (present(qh)) sctot(ix,kz,jy)=sctot(ix,kz,jy)+db(ix,kz,jy)*schl(ix,kz,jy)
+!
+!     ELSE
+!     ! have scdisch /= 0, but fractot=0
+!      chglost = chglost + scdisch(ix,jy,kz)*dv*db(ix,kz,jy)
+!     
+!
+!     ENDIF ! fractot > 0.0
 
       ENDIF ! true/false
       

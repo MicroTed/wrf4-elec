@@ -82,7 +82,7 @@ SUBROUTINE microphysics_driver(                                          &
                       ,ipelectmp                                         & ! Explicit lightning namelist flags
 #ifdef WRF_ELEC 
                       ,f_scr,f_scw,f_sci,f_scs,f_sch,f_schl,f_sciona     &
-                      ,iscreen,lightradtmp,ibrkdtmp,ecrittmp,disfrac,idischarge   & ! Explicit lightning namelist flags
+                      ,iscreen,lightradtmp,ibrkdtmp,ecrittmp,disfrac   & ! Explicit lightning namelist flags
 #endif
                       ,nudge_lightning                                   & ! lightnign Qv nudging flag
                       ,cu_used                                           &
@@ -663,7 +663,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    REAL, OPTIONAL, DIMENSION( ims:ime , kms:kme, jms:jme ) , INTENT(INOUT)   :: noninduc
 
 ! local arrays -- could be made allocatable/save?
-   REAL, DIMENSION( ims:ime , kms:kme, jms:jme,1:2) :: scion ! local array for the driver- 1=-, 2=+
+!   REAL, DIMENSION( ims:ime , kms:kme, jms:jme,1:2) :: scion ! local array for the driver- 1=-, 2=+
    REAL, DIMENSION( ims:ime , kms:kme, jms:jme,1:4) :: elec ! local array for the driver-only emag is used for I/O-ALWAYS USED IN 1D so NOT OPTIONAL !.
 ! End Explicit lightning
 !   lightning nudging/assimilation
@@ -785,7 +785,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 
 #ifdef WRF_ELEC
    real,    OPTIONAL :: lightradtmp,ecrittmp,disfrac
-   integer, OPTIONAL :: iscreen,idischarge,ibrkdtmp
+   integer, OPTIONAL :: iscreen,ibrkdtmp
 #endif
    integer,optional :: ipelectmp,nudge_lightning
 ! End explicit lightning
@@ -857,7 +857,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    logical :: irelax = .false.
    integer :: maxiter = 60
    integer, save :: iboxmgsetup = 0, isetup = 1
-   REAL, DIMENSION(ims:ime, kms:kme, jms:jme ) ::  ezfair,height2
+!   REAL, DIMENSION(ims:ime, kms:kme, jms:jme ) ::  ezfair,height2
    REAL, DIMENSION(kms:kme) ::  potfair
    double precision :: etot
    double precision :: dt1,dt4,timeboxmg
@@ -869,6 +869,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    double precision, parameter :: efa1 = 4.5d-3, efa2 = 3.8d-4, efa3 = 1.0d-4
    double precision, parameter :: efb1 = 0.50, efb2 = 0.65, efb3 = 0.10
    integer :: ng =3
+   integer :: ngx1,ngx2,ngy1,ngy2
 ! End explicit lightning
 #endif
 
@@ -2101,8 +2102,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      NONINDUC = noninduc,                &
                      rscghis_2d = rscghis_2d,            &
                      INDUC = induc,                      & 
-                     ELEC = elecz,                       & 
-                     SCION = scion,                      & 
+                     ELECz = elecz,                      & 
+!                     SCION = scion,                      & 
                      SCIONA = sciona,                    & 
                      VHW=qvolg_curr,                     &
                      VHL=qvolh_curr,                     &
@@ -2260,8 +2261,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      NONINDUC = noninduc,                &
                      rscghis_2d = rscghis_2d,            &
                      INDUC = induc,                      & 
-                     ELEC = elecz,                       & 
-                     SCION = scion,                      & 
+                     ELECZ = elecz,                      & 
+!                     SCION = scion,                      & 
                      SCIONA = sciona,                    & 
                      VHW=qvolg_curr,                     &
                      PII=pi_phy,                         &
@@ -2432,8 +2433,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      NONINDUC = noninduc,                &
                      rscghis_2d = rscghis_2d,            &
                      INDUC = induc,                      & 
-                     ELEC = elecz,                       & 
-                     SCION = scion,                      & 
+                     ELECZ = elecz,                      & 
+!                     SCION = scion,                      & 
                      SCIONA = sciona,                    & 
                      VHW=qvolg_curr,                     &
                      VHL=qvolh_curr,                     &

@@ -3860,7 +3860,7 @@ BENCH_START(micro_driver_tim)
       &        , HISTORY_INTERVAL=grid%history_interval                   &
       &        , CURR_SECS=curr_secs                                      &
       &        , ipelectmp=grid%nssl_ipelec                               &
-      &        , idischarge=grid%nssl_idischarge                          &
+!      &        , idischarge=grid%nssl_idischarge                          &
       &        , iscreen=grid%nssl_iscreen                                &
       &        , lightradtmp=grid%nssl_lightrad                           &
       &        , ecrittmp=grid%nssl_ecrit                                 &

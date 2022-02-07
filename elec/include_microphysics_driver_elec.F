@@ -13,7 +13,7 @@
       light(:,:)=0.
       lightdis(:,:)=0.
       lightdens(:,:)=0.
-       IF (idischarge.eq.1) lightfod(:,:) = 0.
+       IF (elec_physics == 1 .or. elec_physics == 11 ) lightfod(:,:) = 0.
       
      endif
 
@@ -24,13 +24,32 @@
 
   93  format(A,9(I3,2x))
 
-       nxdg = ime-ims+1
-       nydg = jme-jms+1
-       nzdg = kme-kms+1
+!       nxdg = ime-ims+1
+!       nydg = jme-jms+1
+!       nzdg = kme-kms+1
 
-       nxslm = ite-its+1
+       write(*,*) 'its,ite,jts,jte = ',its,ite,jts,jte
+       write(*,*) 'ips,ipe,jps,jpe = ',ips,ipe,jps,jpe
+       write(*,*) 'kts,kte, kps,kpe, kms,kme = ',kts,kte, kps,kpe, kms,kme 
+       nxslm = ite-its+1 
        nyslm = jte-jts+1
+!       nxslm = ipe-ips+1 ! should use "patch" size (ipe) not "tile" size (ite), BUT need to update calls...
+!       nyslm = jpe-jps+1
+!       IF ( ipe == ide ) nxslm = nxslm - 1
+!       IF ( jpe == jde ) nyslm = nyslm - 1
+
        nzslm = kte-kts+1 ! for now. need to make this deeper with extended domain
+       ngx1 = ips - ims - 1
+       ngx2 = ime - ipe
+       ngy1 = jps - jms - 1
+       ngy2 = jme - jpe
+       
+       ! while its,ite are being used, need to check for north/east boundary
+       IF ( ipe == ide ) ngx2 = ngx2 + 1
+       IF ( jpe == jde ) ngy2 = ngy2 + 1
+       write(*,*) 'arrays x: ',-ngx1,nxslm,ngx2, nxslm+ngx2 + ngx1 + 1, ime-ims+1
+       write(*,*) 'arrays y: ',-ngy1,nyslm,ngy2, nyslm+ngy2 + ngy1 + 1, jme-jms+1
+       write(*,*) 'arrays z: ',nzslm, kme-kms+1
 
        nnxs(1) = nxslm
        nnys(1) = nyslm
@@ -42,6 +61,13 @@
          nbe = 0
          nbs = 0
          nbn = 0
+         
+         ! Future test of extended lateral boundary -- do nnxs,nnys need to be updated, too?
+         ! Not necessarily restricted to WRF array sizes since Boxmg arrays are separately allocated
+         ! IF ( ips == 1 ) nbw = ngx1
+         ! IF ( jps == 1 ) nbs = ngy1
+         ! IF ( ipe == ide ) nbe = ngx2
+         ! IF ( jpe == jde ) nbn = ngy2
 
 
 ! Compute fair weather elec field used as first guess:
@@ -181,7 +207,7 @@
          BMG_iPARMS(id_BMG3_CYCLE_CLASS) = bmg_cycletype
 
 
-! calculate E field and flip ijk back to ikj - spew out new values for pot and elec are IKJ
+! calculate E field and flip ijk back to ikj - new values for pot and elec are IKJ
 
 
          pot(:,:,:) = 0.0
@@ -196,29 +222,29 @@
 !     recompute elecmag for 4 top points (without weighted average)
 !     would need a deeper domain for the potential solve (avoid e.g., mirror of charge effect)-
 
-       if (irelax) then
-
-       do j=jts-1,jte+1
-       do k=kte-6,kte
-       do i=its-1,ite+1
-
-       if (abs(elec(i,k,j,4)).gt.abs(ezfair(i,k,j))) then
-       
-       do l=1,3
-       elec(i,k,j,l)=( elec(i,k,j,l) + (k-(kte-6))*ezfair(i,k,j) ) / (iter*(1+(k-(kte-6)))) 
-       enddo
-       endif
-
-        elec(i,k,j,4) = &                                                                                        
-     & Sqrt( elec(i,k,j,1)**2 &                                                
-     &     + elec(i,k,j,2)**2 &                                                
-     &     + elec(i,k,j,3)**2 )
-
-       enddo
-       enddo
-       enddo
-     
-       endif
+!      if (irelax) then
+!
+!      do j=jts-1,jte+1
+!      do k=kte-6,kte
+!      do i=its-1,ite+1
+!
+!      if (abs(elec(i,k,j,4)).gt.abs(ezfair(i,k,j))) then
+!      
+!      do l=1,3
+!      elec(i,k,j,l)=( elec(i,k,j,l) + (k-(kte-6))*ezfair(i,k,j) ) / (iter*(1+(k-(kte-6)))) 
+!      enddo
+!      endif
+!
+!       elec(i,k,j,4) = &                                                                                        
+!    & Sqrt( elec(i,k,j,1)**2 &                                                
+!    &     + elec(i,k,j,2)**2 &                                                
+!    &     + elec(i,k,j,3)**2 )
+!
+!      enddo
+!      enddo
+!      enddo
+!    
+!      endif
 
        elecmag(:,:,:)=elec(:,:,:,4)
        loccur = 0
@@ -231,54 +257,22 @@
        
        
 !       IF ( (mp_physics == NSSL_2MOM .or. mp_physics == NSSL_2MOMCCN ) .and. elec_physics > 0 ) THEN
-       IF (idischarge.eq.1) THEN
+       IF (elec_physics == 1 .or. elec_physics == 11 ) THEN
 
 !    Ziegler and MacGorman (1994,JAS) simple column discharge within cylinders
-       
-     elec_select: SELECT CASE(mp_physics)
 
-      CASE ( NSSL_2MOMCCN, NSSL_2MOM )
       CALL  light1d(iter,loccur,   &
-      &   nor,nxslm,nyslm,nzslm      &
-      &  ,dx,dy,lightradtmp,ibrkdtmp,ecrittmp,disfrac,dz8w(its-1:ite+1,kts:kte,jts-1:jte+1),sctot(its-1:ite+1,kts:kte,jts-1:jte+1) &
-      &  ,scw(its-1:ite+1,kts:kte,jts-1:jte+1),scs(its-1:ite+1,kts:kte,jts-1:jte+1),sci(its-1:ite+1,kts:kte,jts-1:jte+1)  &
-      &  ,scr(its-1:ite+1,kts:kte,jts-1:jte+1),sch(its-1:ite+1,kts:kte,jts-1:jte+1) &
-      &  ,qc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qs_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
-      &  ,qi_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
-      &  ,qg_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
-      &  ,qnc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qns_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
-      &  ,qni_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qnr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
-      &  ,qng_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
-      &  ,elec(its-1:ite+1,kts:kte,jts-1:jte+1,4),scion(its-1:ite+1,kts:kte,jts-1:jte+1,1:2)                              &
-      &  ,sciona(its-1:ite+1,kts:kte,jts-1:jte+1) &
+      &   nor,nxslm,nyslm,nzslm,ngx1,ngx2,ngy1,ngy2      &
+      &  ,dx,dy,lightradtmp,ibrkdtmp,ecrittmp,disfrac,dz8w,sctot &
+      &  ,elecmag                               &
+      &  ,sciona &
       &  ,nbw,nbe,nbs,nbn                                                                                                 &
-      &  ,iunit, rho(its-1:ite+1,kts:kte,jts-1:jte+1)                           &
-      &  ,light(its-1:ite+1,jts-1:jte+1),lightdens(its-1:ite+1,jts-1:jte+1),etot,lightdis(its-1:ite+1,jts-1:jte+1) &
-      &  ,schl(its-1:ite+1,kts:kte,jts-1:jte+1),qh_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qnh_curr(its-1:ite+1,kts:kte,jts-1:jte+1)  )
-
-      CASE ( NSSL_2MOMG )
-      CALL  light1d(iter,loccur,   &
-      &   nor,nxslm,nyslm,nzslm      &
-      &  ,dx,dy,lightradtmp,ibrkdtmp,ecrittmp,disfrac,dz8w(its-1:ite+1,kts:kte,jts-1:jte+1),sctot(its-1:ite+1,kts:kte,jts-1:jte+1) &
-      &  ,scw(its-1:ite+1,kts:kte,jts-1:jte+1),scs(its-1:ite+1,kts:kte,jts-1:jte+1),sci(its-1:ite+1,kts:kte,jts-1:jte+1)  &
-      &  ,scr(its-1:ite+1,kts:kte,jts-1:jte+1),sch(its-1:ite+1,kts:kte,jts-1:jte+1)  &
-      &  ,qc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qs_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
-      &  ,qi_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
-      &  ,qg_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
-      &  ,qnc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qns_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
-      &  ,qni_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qnr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
-      &  ,qng_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
-      &  ,elec(its-1:ite+1,kts:kte,jts-1:jte+1,4),scion(its-1:ite+1,kts:kte,jts-1:jte+1,1:2)                              &
-      &  ,sciona(its-1:ite+1,kts:kte,jts-1:jte+1) &
-      &  ,nbw,nbe,nbs,nbn                                                                                                 &
-      &  ,iunit, rho(its-1:ite+1,kts:kte,jts-1:jte+1)                           &
-      &  ,light(its-1:ite+1,jts-1:jte+1),lightdens(its-1:ite+1,jts-1:jte+1),etot,lightdis(its-1:ite+1,jts-1:jte+1))
-
-     END SELECT elec_select
+      &  ,iunit, rho                           &
+      &  ,light,lightdens,etot,lightdis )
      
         lightfod(:,:) = (dx**2/lightradtmp**2)*light(:,:)
      
-       ELSEIF (idischarge .eq. 2) THEN
+       ELSEIF (elec_physics == 2 .or. elec_physics == 12 ) THEN
         
         
         
@@ -335,7 +329,7 @@
 
       ENDIF
 
-      IF ( idischarge == 1 ) THEN
+      IF (elec_physics == 1 .or. elec_physics == 11 ) THEN
         write (0,*) 'MAX LIGHTNING FLASH RATE in this tile THIS TIME STEP', MAXVAL(light)
       ENDIF
 !        write(0,*) 'times for boxmg = ',timeboxmg

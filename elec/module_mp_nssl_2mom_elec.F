@@ -2051,7 +2051,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
                               rscghis_2d,rscghis_2dp,rscghis_2dn,                       &
                               scr,scw,sci,scs,sch,schl,sctot,                           &
                               elec_physics,                                             &
-                              induc,elec,scion,sciona,                                  &
+                              induc,elecz,scion,sciona,                                  &
                               noninduc,noninducp,noninducn,                             &
                               pcc2, pre2, depsubr,      &
                               mnucf2, melr2, ctr2,     &
@@ -2120,7 +2120,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
                             scr,scw,sci,scs,sch,schl,sciona,sctot  ! space charge
       real, dimension(ims:ime, kms:kme, jms:jme),  optional, intent(inout)::                   &
                             induc,noninduc,noninducp,noninducn  ! charging rates: inductive, noninductive (all, positive, negative to graupel)
-      real, dimension(ims:ime, kms:kme, jms:jme),  optional, intent(in) :: elec ! elecsave = Ez     
+      real, dimension(ims:ime, kms:kme, jms:jme),  optional, intent(in) :: elecz ! elecsave = Ez     
       real, dimension(ims:ime, kms:kme, jms:jme,2),optional, intent(inout) :: scion  
       real, dimension(ims:ime, kms:kme, jms:jme), intent(in)::  p,w,dz,dn
 
@@ -2647,10 +2647,10 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
 
           
 
-!          IF ( present(elec) .and. ipelec > 1) THEN
+!          IF ( present(elecz) .and. ipelec > 1) THEN
           IF (  ipelec > 1) THEN
 
-          elec2(ix,1,kz)   =  elec(ix,kz,jy) ! Ez here =elecsave
+          elec2(ix,1,kz)   =  elecz(ix,kz,jy) ! Ez here =elecsave
 !         sctot is only passed out  - not in nssl 2 mom
 
           ENDIF
@@ -3276,7 +3276,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
           chgpos3 = chgpos3 + Max(0.0, tmp)
           chgiona3 = chgiona3 + sciona(ix,kz,jy)*dn(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
 
-         IF ( present(elec) .and. ipelec > 1) THEN
+         IF ( present(elecz) .and. present(scion) .and. ipelec > 1) THEN
 
          scion(ix,kz,jy,1)  = an(ix,1,kz,lscpi) ! scion2(ix,1,kz,1)
          scion(ix,kz,jy,2)  = an(ix,1,kz,lscni) ! scion2(ix,1,kz,2)
@@ -3284,7 +3284,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
          ENDIF
 
 
-         IF ( present(elec) ) THEN
+         IF ( present(elecz) ) THEN
            sctot3 = sctot3 + sctot(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
            scwtot  = scwtot + scw(ix,kz,jy)*dv
            scrtot  = scrtot + scr(ix,kz,jy)*dv
