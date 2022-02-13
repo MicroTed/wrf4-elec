@@ -134,12 +134,28 @@ Other variables in the &physics namelist:
                                      = 10 : Brooks et al. RARcrit for T > -15 using saund2 (otherwise same as isaund=2) (set rarfac to negative in saund2)
                                      = 11 : Brooks et al. RARcrit for T > -15 using saund6 (otherwise same as isaund=4)
                                      = 12 : Brooks et al. RARcrit for T > -15 using saund6 (otherwise same as isaund=9) (DEFAULT)
+                                     = 13 : Brooks et al. RARcrit for T > -15 using saund8 (cosine roll-off function for smoother approach to zero at low temperature)
+                                   For Takahashi (1978, 1984) charge separation (see below)
+                                     = 1 : Takahashi 1984 with factors for crystal size and impact speed
+                                     = 3 : Takahashi 1984 WITHOUT factors for crystal size and impact speed
+
 
  nssl_lightrad                       = 12000, radius (m) of discharge cylinder for 1-D discharge scheme
 
  nssl_disfrac                        = 0.3, nominal fraction of charge removed per discharge
 
  nssl_ecrit                          = 120000, breakdown electric field (Volts/m) to initiate lightning (i.e., constant value with height). (for nssl_ibrkd=1)
+
+The Takahashi (1978, 1984) charge separation requires a lookup table to be read in. 
+The table file is 'takahashi.txt' and needs to be copied from WRF/elec to the working 
+directory. To use this option, the NSSL microphysics can read an internal namelist, 
+which needs 'nonigrd = -1':
+
+&nssl_mp_params
+  nonigrd = -1
+/
+
+Also set the value nssl_isaund=1
 
 
 ###################

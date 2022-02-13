@@ -442,8 +442,8 @@ SUBROUTINE microphysics_driver(                                          &
 !--elecy        Y-component of the ambient electric field (V/m).
 !--elecz        vertical, Z-component of the ambient electric field (V/m).
 !--pot          electric potential (V)
-!--sctot        total net space charge in C/kg
-!--scx           total net space charge on hydrometeor species x
+!--sctot        total net space charge in C/m**3 (state output, not scalar)
+!--scx           total net space charge on hydrometeor species x (C/kg)
 !--light         2D flash origin densities per output time
 !--lightdens     2D flash extent densities per output time
 !--lightdis      2D total number of discharge points per output time 

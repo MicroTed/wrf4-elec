@@ -1,6 +1,6 @@
 !WRF:MODEL_LAYER:PHYSICS
 
-! prepocessed on "Jan 21 2022" at "16:14:27"
+! prepocessed on "Feb 13 2022" at "13:34:42"
 
 
 
@@ -75,7 +75,8 @@
 !---------------------------------------------------------------------
 ! Sept. 2021:
 ! Fixes:
-!   Restored previous formulation of snow reflectivity, as it was realized that the last change incorrectly assumed a fixed density independent of size. Generally lower reflectivity values as a result (no effect on microphysics)
+!   Restored previous formulation of snow reflectivity, as it was realized that the last change incorrectly assumed a fixed 
+!     density independent of size. Generally lower snow reflectivity values as a result (no effect on microphysics)
 ! Other:
 !   Generic fall speed coeffecients (axx,bxx) to accomodate future frozen drops category (no effect)
 !   Reordered collection coefficients (dab1lh) to be consistent (no effect)
@@ -412,10 +413,10 @@ MODULE module_mp_nssl_2mom
   real   , private :: esi0 = 0.1              ! linear factor in snow-ice collection efficiency
   real   , private :: ehs0 = 0.1, ehs1 = 0.1  ! graupel-snow coll. eff. parameters: ehs0*exp(ehs1*min(temcg(mgs),0.0))
                                      ! set ehs1 = 0 to get a constant value of ehs0
-  real   , private :: ess0 = 1.0, ess1 = 0.05 ! snow aggregation coefficients: ess0*exp(ess1*min(temcg(mgs),0.0))
+  real   , private :: ess0 = 0.5, ess1 = 0.05 ! snow aggregation coefficients: ess0*exp(ess1*min(temcg(mgs),0.0))
                                      ! set ess1 = 0 to get a constant value of ess0
-  real   , private :: esstem1 = -25.  ! lower temperature where snow aggregation turns on
-  real   , private :: esstem2 = -20.  ! higher temperature for linear ramp of ess from zero at esstem1 to formula value at esstem2
+  real   , private :: esstem1 = -15.  ! lower temperature where snow aggregation turns on
+  real   , private :: esstem2 = -10.  ! higher temperature for linear ramp of ess from zero at esstem1 to formula value at esstem2
   real   , private :: essrmax = 0.02  ! maximum snow radius (meters) for csacs
   real   , private :: essfrac1 = 0.5  ! snow mass fraction 1 for aggregation roll-off
   real   , private :: essfrac2 = 0.75 ! snow mass fraction 2 for aggregation roll-off
@@ -1114,7 +1115,7 @@ MODULE module_mp_nssl_2mom
                         delta_alphamlr, &
                         iqvsopt,     &
                         maxsupersat, &
-                        charging_border, &
+                        charging_border, nonigrd, &
                         do_accurate_sedimentation, interval_sedi_vt
 ! #####################################################################
 ! #####################################################################
@@ -1239,13 +1240,20 @@ MODULE module_mp_nssl_2mom
       isaund   = Nint(nssl_params(12))
 
 
-      IF ( .false. ) THEN ! set to true to enable internal namelist read
+
+      IF ( .true. ) THEN ! set to true to enable internal namelist read
       open(15,file='namelist.input',status='old',form='formatted',action='read')
       rewind(15)
       read(15,NML=nssl_mp_params,iostat=istat)
       close(15)
       IF ( istat /= 0 ) THEN
-        write(0,*) 'READ_NAMELIST: PROBLEM WITH NSSL_MP_PARAMS namelist: not found or bad token'
+#ifdef WRF_ELEC
+        IF ( wrf_dm_on_monitor() ) THEN
+        write(0,*) 'NSSL_2MOM_INIT: PROBLEM WITH NSSL_MP_PARAMS namelist: not found or bad token'
+        ENDIF
+#else
+       ! write(0,*) 'NSSL_2MOM_INIT: PROBLEM WITH NSSL_MP_PARAMS namelist: not found or bad token'
+#endif
       ENDIF
         IF ( wrf_dm_on_monitor() .and. .not. wrote_namelist ) THEN
           open(15,file='namelist.output',status='old',action='readwrite', access='append',form='formatted')
@@ -2051,7 +2059,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
                               rscghis_2d,rscghis_2dp,rscghis_2dn,                       &
                               scr,scw,sci,scs,sch,schl,sctot,                           &
                               elec_physics,                                             &
-                              induc,elecz,scion,sciona,                                  &
+                              induc,elecz,scion,sciona,                                 &
                               noninduc,noninducp,noninducn,                             &
                               pcc2, pre2, depsubr,      &
                               mnucf2, melr2, ctr2,     &
@@ -7300,7 +7308,6 @@ END SUBROUTINE nssl_2mom_driver
                      aax = ax(il)
                      vtxbar(mgs,il,2) =  rhovt(mgs)*ax(il)*(xdia(mgs,il,1)**bx(il)*x)/y
                    ENDIF
-
 !                  vtxbar(mgs,il,2) =  &
 !     &               rhovt(mgs)*(xdn(mgs,il)/400.)*(75.715*xdia(mgs,il,1)**0.6* &
 !     &               x)/y
@@ -7322,7 +7329,7 @@ END SUBROUTINE nssl_2mom_driver
                    vtxbar(mgs,il,3) = rhovt(mgs)*                 &
      &                (aax*(xdia(mgs,il,1) )**bbx *  &
      &                 x)/y
-!     &                 Gamma(7.0 + alpha(mgs,il) + bbx))/Gamma(7. + alpha(mgs,il))
+!     &                 Gamma(7.0 + alpha(mgs,il) + bbx)/Gamma(7. + alpha(mgs,il))
           IF ( .not. (vtxbar(mgs,il,1) > -1. .and. vtxbar(mgs,il,1) < 200. ) .or. &
                .not. (vtxbar(mgs,il,3) > -1. .and. vtxbar(mgs,il,3) < 200. ) ) THEN
            write(0,*) 'Setvtz: problem with vtxbar1/3: ',il,vtxbar(mgs,il,1),vtxbar(mgs,il,3),aax,bbx,x,y
@@ -8578,7 +8585,7 @@ END SUBROUTINE nssl_2mom_driver
              ksq = 0.189 ! Smith (1984, JAMC) for equiv. ice sphere
              IF ( an(ix,jy,kz,lns) .gt. 1.e-7 ) THEN
      !          IF ( .true. ) THEN
-               IF ( qxw > qsmin .or. iusewetsnow >= 2) THEN ! old version
+               IF ( qxw > qsmin .or. iusewetsnow >= 2 ) THEN ! old version
 !                gtmp(ix,kz) = 3.6e18*(snu+2.)*( 0.224*an(ix,jy,kz,ls) + 0.776*qxw)*an(ix,jy,kz,ls)/ &
 !     &              (an(ix,jy,kz,lns)*(snu+1.)*rwdn**2)*db(ix,jy,kz)**2
                 gtmp(ix,kz) = 3.6e18*(snu+2.)*( 0.224*(an(ix,jy,kz,ls)+qxw1) + 0.776*qxw)*(an(ix,jy,kz,ls)+qxw1)/ &

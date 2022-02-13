@@ -32,10 +32,10 @@
 !      real dzz(0:nx+1,nz,0:ny+1),dxx,dyy   
 !      real db(0:nx+1,nz,0:ny+1)
       real elec(-ngx1:nx+ngx2,nz+1,-ngy1:ny+ngy2)
-      real sciona(-ngx1:nx+ngx2,nz+1,-ngy1:ny+ngy2)
+      real sciona(-ngx1:nx+ngx2,nz+1,-ngy1:ny+ngy2) ! units of C/kg
       real dzz(-ngx1:nx+ngx2,nz+1,-ngy1:ny+ngy2),dxx,dyy   
       real db(-ngx1:nx+ngx2,nz+1,-ngy1:ny+ngy2)
-      real sctot(-ngx1:nx+ngx2,nz+1,-ngy1:ny+ngy2)
+      real sctot(-ngx1:nx+ngx2,nz+1,-ngy1:ny+ngy2) ! units of C/m**3
 !      real sctot(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
       integer, parameter    :: ng1 = 1
       integer nbw,nbe,nbs,nbn
@@ -680,7 +680,7 @@
        
         
          scionatmp = sciona(ix,kz,jy)
-         if (sctot(ix,kz,jy) .gt.  chgthr) sciona(ix,kz,jy)=sciona(ix,kz,jy)-scdisch(ix,jy,kz)
+         if (sctot(ix,kz,jy) .gt.  chgthr) sciona(ix,kz,jy)=sciona(ix,kz,jy)-scdisch(ix,jy,kz) ! both in units of C/kg
          if (sctot(ix,kz,jy) .lt. -chgthr) sciona(ix,kz,jy)=sciona(ix,kz,jy)+scdisch(ix,jy,kz)
          
          ! update the net charge. Could instead set scionatmp to +/- scdisch(ix,jy,kz) and add that to both sctot and sciona
@@ -826,12 +826,12 @@
 
 !  Reserved for future use
       IF ( mytask == 0 ) THEN ! only print from task 0
-        write(0,'(a,3(2x,1pe12.5))') 'pos/neg1: ',totpos1,totneg1,totpos1+totneg1
-        write(0,'(a,3(2x,1pe12.5))') 'pos/neg2 scdisch: ',totpos2,totneg2,totpos2+totneg2
-        write(0,'(a,3(2x,1pe12.5))') 'pos/negbef: ',totposbef,totnegbef,totposbef+totnegbef
-        write(0,'(a,3(2x,1pe12.5))') 'pos/neg3: ',totpos3,totneg3,totpos3+totneg3
+        write(0,'(a,3(2x,1pe12.5))') 'pos/neg1: ',totpos1,totneg1,totpos1+totneg1 ! net pos/neg in discharge cylinders
+        write(0,'(a,3(2x,1pe12.5))') 'pos/neg2 scdisch: ',totpos2,totneg2,totpos2+totneg2 ! lightning charge full domain
+        write(0,'(a,3(2x,1pe12.5))') 'pos/negbef: ',totposbef,totnegbef,totposbef+totnegbef ! full domain
+        write(0,'(a,3(2x,1pe12.5))') 'pos/neg3: ',totpos3,totneg3,totpos3+totneg3 ! full domain after lightning
 !        write(iunit,'(a,3(2x,1pe12.5))') 'pos/negaft: ',totposaft,totnegaft,totposaft+totnegaft
-        write(0,'(a,1(2x,1pe12.5))') 'chglost: ',chglost
+!        write(0,'(a,1(2x,1pe12.5))') 'chglost: ',chglost
       ENDIF
 
 !        write(0,*) '+============AFTER DISCHARGE============+'
@@ -859,7 +859,8 @@
       write(iunit,*) 'LIGHTNING DISCHARGE:  SCHEME 1'
 !!      write(iunit,*) 'TIME STEP IS: ',time_real
       write(iunit,*) 'TOTAL NUMBER OF DISCHARGES IS: ',nlgt1
-      write(iunit,*) 'chgpos,chgneg : ',chgpos,chgneg
+      write(iunit,*) 'Available chg in cylinders: chgpos,chgneg : ',chgpos,chgneg
+      write(iunit,'(a,3(2x,1pe12.5))') 'Final domain pos/neg chg: ',totpos3,totneg3,totpos3+totneg3 ! full domain after lightning
 !      write(iunit,*) '______________________________'
 !!      ENDIF
 !

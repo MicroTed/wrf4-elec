@@ -28,9 +28,9 @@
 !       nydg = jme-jms+1
 !       nzdg = kme-kms+1
 
-       write(*,*) 'its,ite,jts,jte = ',its,ite,jts,jte
-       write(*,*) 'ips,ipe,jps,jpe = ',ips,ipe,jps,jpe
-       write(*,*) 'kts,kte, kps,kpe, kms,kme = ',kts,kte, kps,kpe, kms,kme 
+!       write(*,*) 'its,ite,jts,jte = ',its,ite,jts,jte
+!       write(*,*) 'ips,ipe,jps,jpe = ',ips,ipe,jps,jpe
+!       write(*,*) 'kts,kte, kps,kpe, kms,kme = ',kts,kte, kps,kpe, kms,kme 
        nxslm = ite-its+1 
        nyslm = jte-jts+1
 !       nxslm = ipe-ips+1 ! should use "patch" size (ipe) not "tile" size (ite), BUT need to update calls...
@@ -47,9 +47,9 @@
        ! while its,ite are being used, need to check for north/east boundary
        IF ( ipe == ide ) ngx2 = ngx2 + 1
        IF ( jpe == jde ) ngy2 = ngy2 + 1
-       write(*,*) 'arrays x: ',-ngx1,nxslm,ngx2, nxslm+ngx2 + ngx1 + 1, ime-ims+1
-       write(*,*) 'arrays y: ',-ngy1,nyslm,ngy2, nyslm+ngy2 + ngy1 + 1, jme-jms+1
-       write(*,*) 'arrays z: ',nzslm, kme-kms+1
+!       write(*,*) 'arrays x: ',-ngx1,nxslm,ngx2, nxslm+ngx2 + ngx1 + 1, ime-ims+1
+!       write(*,*) 'arrays y: ',-ngy1,nyslm,ngy2, nyslm+ngy2 + ngy1 + 1, jme-jms+1
+!       write(*,*) 'arrays z: ',nzslm, kme-kms+1
 
        nnxs(1) = nxslm
        nnys(1) = nyslm
@@ -74,27 +74,27 @@
 ! fair weather field from Gish 1944 / Mansell et al 2005
 
 
-       do k=kts,kte
-       do j=jts-1,jte+1
-       do i=its-1,ite+1
-
-       height2(i,k,j)=sum( dz8w(i,1:k,j) )
-
-      ezfair(i,k,j) =   ezfairo *                           &
-         &      ( efb1*exp(-efa1*height2(i,k,j))             &
-         &        +efb2*exp(-efa2*height2(i,k,j))            &
-         &        +efb3*exp(-efa3*height2(i,k,j)) )
-
-
-      enddo
-      enddo
-
-      potfair(k) = ezfairo *                            &
-         &       ( -efa1*efb1*exp(-efa1*height2(its,k,jts))      &
-         &         -efa2*efb2*exp(-efa2*height2(its,k,jts))      &
-         &         -efa3*efb3*exp(-efa3*height2(its,k,jts)) )
-
-      enddo
+!      do k=kts,kte
+!      do j=jts-1,jte+1
+!      do i=its-1,ite+1
+!
+!      height2(i,k,j)=sum( dz8w(i,1:k,j) )
+!
+!     ezfair(i,k,j) =   ezfairo *                           &
+!        &      ( efb1*exp(-efa1*height2(i,k,j))             &
+!        &        +efb2*exp(-efa2*height2(i,k,j))            &
+!        &        +efb3*exp(-efa3*height2(i,k,j)) )
+!
+!
+!     enddo
+!     enddo
+!
+!     potfair(k) = ezfairo *                            &
+!        &       ( -efa1*efb1*exp(-efa1*height2(its,k,jts))      &
+!        &         -efa2*efb2*exp(-efa2*height2(its,k,jts))      &
+!        &         -efa3*efb3*exp(-efa3*height2(its,k,jts)) )
+!
+!     enddo
 
 !        potfair(its-1,:,:)=potfair(its,:,:)
 !        potfair(ite+1,:,:)=potfair(ite,:,:)
@@ -103,10 +103,10 @@
 
         potfair(:) = 0.0 ! set to zero for now, since we do not have an ion field
 
-        ezfair(its-1,:,:)=ezfair(its,:,:)
-        ezfair(ite+1,:,:)=ezfair(ite,:,:)
-        ezfair(:,:,jts-1)=ezfair(:,:,jts)
-        ezfair(:,:,jte+1)=ezfair(:,:,jte)
+!       ezfair(its-1,:,:)=ezfair(its,:,:)
+!       ezfair(ite+1,:,:)=ezfair(ite,:,:)
+!       ezfair(:,:,jts-1)=ezfair(:,:,jts)
+!       ezfair(:,:,jte+1)=ezfair(:,:,jte)
 
 
       IF ( iboxmgsetup == 0 ) THEN ! do not make more than one call to boxmgsetup otherwise will allocate arrays more than once 
