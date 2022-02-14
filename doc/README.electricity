@@ -2,8 +2,8 @@
 ## INTRO ##
 ###########
 
-This is a first release in WRF of a basic electrification for the NSSL microphysics scheme. 
-The electrification parameterizations are based out of past work in modeling. The basics of the
+WRF-ELEC provides basic electrification and lightning using the NSSL microphysics scheme. 
+The electrification parameterizations are based on past work in modeling. The basics of the
 charge separation schemes comes from Mansell et al. (2005). Their use in the NSSL 2-moment microphysics
 is shown in Mansell et al. 2010 and Mansell and Ziegler (2013). First implementation into WRF is
 described by Fierro et al. (2013), which includes details of the basic discharge scheme (cylindrical
@@ -36,20 +36,7 @@ If you have trouble with this option please contact the developers directly (i.e
 
 # Obtain WRF-ELEC code #
 
-Similar to WRF-CHEM, necessary files are provided externally at
-
-https://sourceforge.net/projects/wrfelec
-
-Files are available as an archive:
-
-    WRFV37_ELEC.tgz (for use with unmodified WRF-3.7.0
-    WRF_ELEC.tgz (only the 'elec' subdirectory for WRF-3.7.1 and later)
-    
-or as individual files in the "elec-3.x" directories.
-
-First expand the archive in the top level of your WRF 3.7 directory and install BoxMG (below)
-before running 'configure'.
-
+[To be updated: Either will be included in WRF release or as submodule for the 'elec']
 
 # BoxMG #
 
@@ -58,12 +45,14 @@ potential. This library is distributed at the moment as a source code archive at
 
 http://sourceforge.net/projects/boxmg4wrf/
 
-It is also available via svn at the same site. Note that the code has only been compiled for Intel/AMD
-(non-Itanium) architecture under Linux and OS X. (Not attempted on Cray or other platforms -- if you
-succeed on other platforms, please let us know at <ted.mansell@noaa.gov>)
+The git repository is recommended as the most up-to-date. Note that the code has only been 
+compiled for Intel/AMD (non-Itanium) architecture under Linux and OS X using either Intel
+Fortran or GNU compilers. (For problems, contact <ted.mansell@noaa.gov>)
 
-BoxMG needs to be installed before configuring WRF. Unpack the archive where you want the 
-libraries to be and then follow the instructions in the INSTALL document.
+BoxMG needs to be installed before configuring WRF. Install the code where you want the 
+libraries to be and then follow the instructions in the INSTALL document:
+
+git clone https://git.code.sf.net/p/boxmg4wrf/git boxmg4wrf
 
 
 # Configure/compile WRF #
@@ -102,11 +91,13 @@ Electrification only works with the NSSL 2-moment options (with hail):
                                      = 17, NSSL 2-moment 4-ice scheme (steady background CCN)
                                      = 18, NSSL 2-moment 4-ice scheme with predicted CCN (better for idealized than real cases)
                                        ; to set a global CCN value, use
+                                     = 22, NSSL 2-moment 3-ice (hail species turned off)
                                        
 Other variables in the &physics namelist:
 
  elec_physics                        = 0, electrification (and charge arrays) turned off (DEFAULT)
                                      = 1, electrification turned on with "1D" lightning scheme based on Ziegler and MacGorman (1994, JAS) (only works with mp_physics = 17 or 18, i.e., 2-moment NSSL schemes)
+                                     = 2, [in progress] electrification turned on with "3D" lightning scheme (MacGorman et al. 2001, with updates)
 
  nssl_ipelec (max_dom)     ! NOTE: only set this to a nonzero value on the innermost domain
                                      = 0, charging turned off (DEFAULT)
@@ -164,26 +155,28 @@ Also set the value nssl_isaund=1
 
 2D, time-dependent:
 
-  LIGHT      : Sum of lightning initations in the column
+  LIGHT      : Sum of lightning initations in the column (For 1D discharge, this counts all points that 
+                 have electric field magnitude that exceeds the initiation threshold
   LIGHTDENS  : Flash extent density (sum of the number of flashes that extend into the grid column)
-  LIGHTDIS   : A kind of "source point" density that adds up the number of points in a column that have lightning
-               charge magnitude greater than 0.1*chgthr (effectively 0.01 nC/m^3 or more)
+  LIGHTDIS   : A kind of "source point" density that adds up the number of points in a column where
+                 lightning charge is deposited
+  rscghis_2d : column sum of charge separation (magnitude) over the history interval
 
 3D, time-dependent:
 
   POT         : Electric potential (Volts)
-  ELECMAG     : Electric field magnitude
-  ELECX       : x-component of E
-  ELECY       : y-component of E
-  ELECZ       : z-component of E
-  INDUC       : Inductive charge separation rate
-  NONINDUC    : Net noninductive charge separation rate
-  SCW         : Charge density carried by cloud droplets
-  SCR         : Charge density carried by rain
-  SCI         : Charge density carried by cloud ice
-  SCS         : Charge density carried by snow
-  SCH         : Charge density carried by graupel
-  SCHL        : Charge density carried by hail
-  SCTOT       : Net charge density
-  SCIONA      : Residual charge from lightning and evaporating hydrometeors that has not been reattached to another species
+  ELECMAG     : Electric field magnitude (V/m)
+  ELECX       : x-component of E (V/m)
+  ELECY       : y-component of E (V/m)
+  ELECZ       : z-component of E (V/m)
+  INDUC       : Inductive charge separation rate (C m^-3 s^-1)
+  NONINDUC    : Net noninductive charge separation rate (C m^-3 s^-1)
+  SCW         : Charge density carried by cloud droplets (C/kg, i.e., 'charge mixing ratio')
+  SCR         : Charge density carried by rain (C/kg)
+  SCI         : Charge density carried by cloud ice (C/kg)
+  SCS         : Charge density carried by snow (C/kg)
+  SCH         : Charge density carried by graupel (C/kg)
+  SCHL        : Charge density carried by hail (C/kg)
+  SCTOT       : Net charge density (C m^-3) Is NOT mixing ratio
+  SCIONA      : Residual charge from lightning and evaporating hydrometeors that has not been reattached to another species (C/kg)
 
