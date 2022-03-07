@@ -3847,6 +3847,12 @@ BENCH_START(micro_driver_tim)
       &        , POT=grid%pot                                             &
       &        , LIGHT=grid%light                                         &
       &        , LIGHTDENS=grid%lightdens                                 &
+      &        , flshfedic=grid%flshfedic                                 &
+      &        , flshfedicn=grid%flshfedicn                                 &
+      &        , flshfedicp=grid%flshfedicp                                 &
+      &        , flshfedcg=grid%flshfedcg                                 &
+      &        , flshfedcgn=grid%flshfedcgn                                 &
+      &        , flshfedcgp=grid%flshfedcgp                                 &
       &        , LIGHTDIS=grid%lightdis                                   &
       &        , LIGHTFOD=grid%lightfod                                   &
       &        , SCR=scalar(ims,kms,jms,P_SCR), F_SCR=F_SCR               & 
@@ -3860,12 +3866,15 @@ BENCH_START(micro_driver_tim)
       &        , HISTORY_INTERVAL=grid%history_interval                   &
       &        , CURR_SECS=curr_secs                                      &
       &        , ipelectmp=grid%nssl_ipelec                               &
-!      &        , idischarge=grid%nssl_idischarge                          &
+      &        , idischarge=grid%nssl_idischarge                          &
       &        , iscreen=grid%nssl_iscreen                                &
       &        , lightradtmp=grid%nssl_lightrad                           &
       &        , ecrittmp=grid%nssl_ecrit                                 &
       &        , ibrkdtmp=grid%nssl_ibrkd                                 &
       &        , disfrac=grid%nssl_disfrac                                &
+      &        , nssl_einternal=config_flags%nssl_einternal               &
+      &        , nssl_tgrnd=config_flags%nssl_tgrnd                       &
+      &        , nssl_zgrnd=config_flags%nssl_zgrnd                       &
 #endif
 !--------------END EXPLICIT LIGHTNING -------------------------------------
       &        , HAIL=config_flags%gsfcgce_hail                           & ! for gsfcgce

@@ -79,10 +79,11 @@ SUBROUTINE microphysics_driver(                                          &
                       ,f_effr,f_ice_effr,f_tot_effr                      &
                       ,f_qic_effr,f_qip_effr,f_qid_effr                  &                 
                       ,scr,scw,sci,scs,sch,schl,sciona,sctot             &
-                      ,ipelectmp                                         & ! Explicit lightning namelist flags
+                      ,ipelectmp,idischarge                              & ! Explicit lightning namelist flags
 #ifdef WRF_ELEC 
                       ,f_scr,f_scw,f_sci,f_scs,f_sch,f_schl,f_sciona     &
                       ,iscreen,lightradtmp,ibrkdtmp,ecrittmp,disfrac   & ! Explicit lightning namelist flags
+                      , nssl_elgtfestop,nssl_einternal,nssl_tgrnd,nssl_zgrnd &
 #endif
                       ,nudge_lightning                                   & ! lightnign Qv nudging flag
                       ,cu_used                                           &
@@ -109,6 +110,8 @@ SUBROUTINE microphysics_driver(                                          &
                       ,induc,pot,elecmag                                 &
                       ,elecx,f_elecx,elecy,elecz                         &
                       ,light,lightdens,lightdis, lightfod                &
+                      ,flshfedic,flshfedicp,flshfedicn                   &
+                      ,flshfedcg,flshfedcgp,flshfedcgn                   &
                       ,gridlight                                         &
                       ,noninduc,  rscghis_2d                             &
 #endif
@@ -658,9 +661,13 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    REAL, OPTIONAL, DIMENSION( ims:ime , kms:kme, jms:jme ) , INTENT(INOUT) :: pot
    REAL, OPTIONAL, DIMENSION( ims:ime , kms:kme, jms:jme ) , INTENT(INOUT)   :: elecmag,induc,elecx,elecy,elecz
    REAL, OPTIONAL, DIMENSION( ims:ime , jms:jme )          , INTENT(INOUT)   :: light,lightdens,lightfod
-   INTEGER, OPTIONAL, DIMENSION( ims:ime , jms:jme )       , INTENT(INOUT)   :: lightdis
+   REAL, OPTIONAL, DIMENSION( ims:ime , jms:jme )          , INTENT(INOUT)   :: flshfedic,flshfedicn,flshfedicp
+   REAL, OPTIONAL, DIMENSION( ims:ime , jms:jme )          , INTENT(INOUT)   :: flshfedcg,flshfedcgn,flshfedcgp
+   REAL, OPTIONAL, DIMENSION( ims:ime , jms:jme )          , INTENT(INOUT)   :: lightdis
    REAL, OPTIONAL, DIMENSION( ims:ime , jms:jme )          , INTENT(INOUT) ::  rscghis_2d
    REAL, OPTIONAL, DIMENSION( ims:ime , kms:kme, jms:jme ) , INTENT(INOUT)   :: noninduc
+   INTEGER,   DIMENSION( ims:ime, jms:jme) :: lightmask,lightinit
+   INTEGER,   DIMENSION( ims:ime, jms:jme,kms:kme) :: initmask
 
 ! local arrays -- could be made allocatable/save?
 !   REAL, DIMENSION( ims:ime , kms:kme, jms:jme,1:2) :: scion ! local array for the driver- 1=-, 2=+
@@ -784,10 +791,10 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                        ,f_qnwfa, f_qnifa                         ! Added by G. Thompson
 
 #ifdef WRF_ELEC
-   real,    OPTIONAL :: lightradtmp,ecrittmp,disfrac
+   real,    OPTIONAL :: lightradtmp,ecrittmp,disfrac,nssl_einternal,nssl_tgrnd,nssl_zgrnd
    integer, OPTIONAL :: iscreen,ibrkdtmp
 #endif
-   integer,optional :: ipelectmp,nudge_lightning
+   integer,optional :: ipelectmp,idischarge,nudge_lightning
 ! End explicit lightning
 
 
@@ -854,6 +861,9 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 #ifdef WRF_ELEC
 ! Explicit lightning
    integer l,iter,lgtstp,loccur,nxdg,nydg,nzdg
+   integer, save :: numic,numcgp,numcgn
+   double precision, save :: cnoxtot,cnoxall,cnoxic,cnoxcg
+   integer :: inittot, flashcount, count, init, maskcount, maskcounttot
    logical :: irelax = .false.
    integer :: maxiter = 60
    integer, save :: iboxmgsetup = 0, isetup = 1
@@ -863,7 +873,17 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    double precision :: dt1,dt4,timeboxmg
    real, parameter :: jc = -2.0e-12  ! fair weather current density J (Amp m**-2) (Helsdon & Farley 1987; Chiu (1978) has -2.7e-12, quoting Gish (1944))
    real, parameter :: eperao = 8.8592e-12 ! permittivity of air
+   real, optional, intent(in) :: nssl_elgtfestop
 !   fair weather elec field params
+   logical, external :: wrf_dm_on_monitor
+
+#ifdef DM_PARALLEL
+      INCLUDE 'mpif.h'
+#else
+      integer :: mytask = 0
+#endif
+   real  mpitotin(ntot), mpitotout(ntot)
+   integer  impitotin(ntot), impitotout(ntot)
 
    double precision, parameter :: ezfairo = -80.00d0
    double precision, parameter :: efa1 = 4.5d-3, efa2 = 3.8d-4, efa3 = 1.0d-4

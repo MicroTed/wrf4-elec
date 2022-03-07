@@ -257,7 +257,7 @@
        
        
 !       IF ( (mp_physics == NSSL_2MOM .or. mp_physics == NSSL_2MOMCCN ) .and. elec_physics > 0 ) THEN
-       IF (elec_physics == 1 .or. elec_physics == 11 ) THEN
+       IF ( idischarge == 1 ) THEN
 
 !    Ziegler and MacGorman (1994,JAS) simple column discharge within cylinders
 
@@ -272,7 +272,112 @@
      
         lightfod(:,:) = (dx**2/lightradtmp**2)*light(:,:)
      
-       ELSEIF (elec_physics == 2 .or. elec_physics == 12 ) THEN
+       ELSEIF ( idischarge == 2 ) THEN
+
+         cnoxtot = 0.0
+
+         lightinit(:,:) = 0
+         lightmask(:,:) = 0
+         
+         inittot = 1
+         count = 0
+         
+         
+         DO WHILE ( inittot > 0 .and. lgtstp == 0 )
+         
+!         write(0,*) 'inittot,lgtstp = ',inittot,lgtstp
+         
+!         write(0,*) 'call msz'
+!        CALL  lightmsz(iter,lgtstp,loccur,dt,itimestep,idischarge,nssl_elgtfestop,cnoxtot,   &
+!     &   nor,nxslm,nyslm,nzslm,ids,ide,jds,jde,kds,kde,its,jts, &
+!     &   ims0,ime0,jms0,jme0,kms,kme,temg     &
+!     &  ,dx,dy,lightradtmp,ecrittmp,disfrac,dz8w(its-1:ite+1,kts:kte,jts-1:jte+1),sctot(its-1:ite+1,kts:kte,jts-1:jte+1) &
+!     &  ,pot(its-1:ite+1,kts:kte,jts-1:jte+1) &
+!     &  ,scw(its-1:ite+1,kts:kte,jts-1:jte+1),scs(its-1:ite+1,kts:kte,jts-1:jte+1),sci(its-1:ite+1,kts:kte,jts-1:jte+1)  &
+!     &  ,scr(its-1:ite+1,kts:kte,jts-1:jte+1),sch(its-1:ite+1,kts:kte,jts-1:jte+1),schl(its-1:ite+1,kts:kte,jts-1:jte+1) &
+!     &  ,qc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qs_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
+!     &  ,qi_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
+!     &  ,qg_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qh_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
+!     &  ,qnc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qns_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
+!     &  ,qni_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qnr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
+!     &  ,qng_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qnh_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
+!     &  ,elec(its-1:ite+1,kts:kte,jts-1:jte+1,1:4),scion(its-1:ite+1,kts:kte,jts-1:jte+1,1:2)                            & ! could also pass elecmag...
+!     &  ,sciona(its-1:ite+1,kts:kte,jts-1:jte+1)                                                                         &
+!     &  ,nbw,nbe,nbs,nbn ,nbw0,nbe0,nbs0,nbn0                                                                                                 &
+!     &  ,iunit, rho(its-1:ite+1,kts:kte,jts-1:jte+1),p(its-1:ite+1,kts:kte,jts-1:jte+1)                                  &
+!     &  ,light(its-1:ite+1,jts-1:jte+1),lightdens(its-1:ite+1,jts-1:jte+1),etot,lightdis(its-1:ite+1,jts-1:jte+1)        &
+!     &  ,flshfedic,flshfedicp,flshfedicn,flshfedcg,flshfedcgp,flshfedcgn                                                 &
+!     &  ,flshi(its-1:ite+1,kts:kte,jts-1:jte+1) &
+!     &  ,flshn(its-1:ite+1,kts:kte,jts-1:jte+1),flshp(its-1:ite+1,kts:kte,jts-1:jte+1)                                   &
+!     &  ,lightmask(its-1:ite+1,jts-1:jte+1),lightinit(its-1:ite+1,jts-1:jte+1),initmask(its-1:ite+1,jts-1:jte+1,kts:kte) &
+!     &  ,nssl_einternal,nssl_tgrnd,nssl_zgrnd &
+!     &  ,f_clnox,its,jts,flashcount,clnox(its-1:ite+1,kts:kte,jts-1:jte+1),kcldtop )
+       
+!       write(0,*) 'done msz'
+      CALL MPI_Barrier(local_communicator, mpi_error_code)
+
+       ! check lightinit and lightmask for hits in lightinit that are not covered by lightmask
+       init = 0
+       maskcount = 0
+       maskcounttot = 0
+        outer: DO  i=its-1,ite+1
+         DO j=jts-1,jte+1
+           ! count how many possible initiation points are *remaining* (not used and not in footprint of previous flash)
+           IF ( lightmask(i,j) == 0 .and. lightinit(i,j) >= 1 ) THEN 
+            init = init + 1
+           ENDIF
+           IF ( lightmask(i,j) > 0 ) maskcount = maskcount + 1
+         ENDDO
+       ENDDO outer
+       
+       inittot = init
+       maskcounttot = maskcount
+
+
+! #if DM_PARALLEL
+#if ( defined(DM_PARALLEL)  &&   ! defined(STUBMPI) )
+      impitotin(1) = init
+      impitotin(2) = maskcount
+      n = 2
+      CALL MPI_AllReduce(impitotin, impitotout, n, MPI_INTEGER, MPI_SUM, local_communicator, ierr)
+!      call wrf_dm_sum_integers(impitotin,impitotout)
+      
+      inittot = impitotout(1)
+      maskcounttot = impitotout(2)
+      
+#endif
+!     write(iunit,*) 'count,init,inittot,maskcount,maskcounttot',count,init,inittot,maskcount,maskcounttot
+!     write(0,*) 'count,init,inittot,maskcount,maskcounttot',count,init,inittot,maskcount,maskcounttot
+
+       
+!       write(0,*) 'micro_driver: init,inittot,count,lgtstp,loccur = ',init,inittot,count,lgtstp,loccur
+!       write(0,*) 'micro_driver: maskcount,maskcounttot = ',maskcount,maskcounttot
+
+       
+        cnoxall = cnoxall + cnoxtot
+        IF ( loccur == 1 ) THEN
+           numic = numic + 1
+           cnoxic = cnoxic + cnoxtot
+        ENDIF
+        IF ( loccur == 2 ) THEN
+           numcgn = numcgn + 1
+           cnoxcg = cnoxcg + cnoxtot
+        ENDIF
+        IF ( loccur == 3 ) THEN
+           numcgp = numcgp + 1
+           cnoxcg = cnoxcg + cnoxtot
+        ENDIF
+         
+        count = count + 1
+
+       IF ( wrf_dm_on_monitor() ) THEN
+         write(iunit,*) 'msz done: iter,count,loccur,lgtstp,remaining inits', iter,count,loccur,lgtstp,inittot
+       ENDIF
+
+        IF ( count >= maxiter ) EXIT
+         
+       ENDDO ! while (init > 0 )
+        
         
         
         

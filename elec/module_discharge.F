@@ -108,7 +108,7 @@
 
       real :: light(-ngx1:nx+ngx2,-ngy1:ny+ngy2)
       real :: lightdens(-ngx1:nx+ngx2,-ngy1:ny+ngy2)
-      integer :: lightdis(-ngx1:nx+ngx2,-ngy1:ny+ngy2)
+      real :: lightdis(-ngx1:nx+ngx2,-ngy1:ny+ngy2)
          
        real,allocatable,save :: ebrkdp(:,:,:),ebrkd(:,:,:),zlev(:,:,:)
  
