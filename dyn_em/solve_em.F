@@ -3853,6 +3853,9 @@ BENCH_START(micro_driver_tim)
       &        , flshfedcg=grid%flshfedcg                                 &
       &        , flshfedcgn=grid%flshfedcgn                                 &
       &        , flshfedcgp=grid%flshfedcgp                                 &
+      &        , flshi=grid%flshi                                         &
+      &        , flshn=grid%flshn                                         &
+      &        , flshp=grid%flshp                                         &
       &        , LIGHTDIS=grid%lightdis                                   &
       &        , LIGHTFOD=grid%lightfod                                   &
       &        , SCR=scalar(ims,kms,jms,P_SCR), F_SCR=F_SCR               & 
@@ -3863,6 +3866,7 @@ BENCH_START(micro_driver_tim)
       &        , SCHL=scalar(ims,kms,jms,P_SCHL), F_SCHL=F_SCHL           & 
       &        , SCIONA=scalar(ims,kms,jms,P_SCIONA), F_SCIONA=F_SCIONA   & 
       &        , SCTOT=grid%sctot                                         &  
+      &        , clnox=scalar(ims,kms,jms,p_clnox), f_clnox=f_clnox       &
       &        , HISTORY_INTERVAL=grid%history_interval                   &
       &        , CURR_SECS=curr_secs                                      &
       &        , ipelectmp=grid%nssl_ipelec                               &
@@ -3871,6 +3875,7 @@ BENCH_START(micro_driver_tim)
       &        , lightradtmp=grid%nssl_lightrad                           &
       &        , ecrittmp=grid%nssl_ecrit                                 &
       &        , ibrkdtmp=grid%nssl_ibrkd                                 &
+      &        , nssl_elgtfestop=grid%nssl_elgtfestop                     &
       &        , disfrac=grid%nssl_disfrac                                &
       &        , nssl_einternal=config_flags%nssl_einternal               &
       &        , nssl_tgrnd=config_flags%nssl_tgrnd                       &

@@ -9,6 +9,7 @@ MODULES =                                \
              module_boxmgsetup.o \
              module_screen.o \
              module_discharge.o \
+             module_discharge_msz.o \
              module_nudge_light.o
             
 LIBTARGET    =  elecphys

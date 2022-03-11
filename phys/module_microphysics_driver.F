@@ -79,6 +79,7 @@ SUBROUTINE microphysics_driver(                                          &
                       ,f_effr,f_ice_effr,f_tot_effr                      &
                       ,f_qic_effr,f_qip_effr,f_qid_effr                  &                 
                       ,scr,scw,sci,scs,sch,schl,sciona,sctot             &
+                      ,clnox,f_clnox                                     &
                       ,ipelectmp,idischarge                              & ! Explicit lightning namelist flags
 #ifdef WRF_ELEC 
                       ,f_scr,f_scw,f_sci,f_scs,f_sch,f_schl,f_sciona     &
@@ -112,6 +113,7 @@ SUBROUTINE microphysics_driver(                                          &
                       ,light,lightdens,lightdis, lightfod                &
                       ,flshfedic,flshfedicp,flshfedicn                   &
                       ,flshfedcg,flshfedcgp,flshfedcgn                   &
+                      ,flshi, flshn, flshp                               &
                       ,gridlight                                         &
                       ,noninduc,  rscghis_2d                             &
 #endif
@@ -216,6 +218,7 @@ SUBROUTINE microphysics_driver(                                          &
 ! BOXMG Solver
   USE module_boxmgsetup
   USE module_discharge
+  USE module_discharge_msz
   USE module_screen
   USE module_nudge_light
 #endif
@@ -660,6 +663,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 #ifdef WRF_ELEC 
    REAL, OPTIONAL, DIMENSION( ims:ime , kms:kme, jms:jme ) , INTENT(INOUT) :: pot
    REAL, OPTIONAL, DIMENSION( ims:ime , kms:kme, jms:jme ) , INTENT(INOUT)   :: elecmag,induc,elecx,elecy,elecz
+   REAL, OPTIONAL, DIMENSION( ims:ime , kms:kme, jms:jme ) , INTENT(INOUT)   :: flshi, flshn, flshp 
    REAL, OPTIONAL, DIMENSION( ims:ime , jms:jme )          , INTENT(INOUT)   :: light,lightdens,lightfod
    REAL, OPTIONAL, DIMENSION( ims:ime , jms:jme )          , INTENT(INOUT)   :: flshfedic,flshfedicn,flshfedicp
    REAL, OPTIONAL, DIMENSION( ims:ime , jms:jme )          , INTENT(INOUT)   :: flshfedcg,flshfedcgn,flshfedcgp
@@ -668,6 +672,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    REAL, OPTIONAL, DIMENSION( ims:ime , kms:kme, jms:jme ) , INTENT(INOUT)   :: noninduc
    INTEGER,   DIMENSION( ims:ime, jms:jme) :: lightmask,lightinit
    INTEGER,   DIMENSION( ims:ime, jms:jme,kms:kme) :: initmask
+   integer :: ims0=0,ime0=0,jms0=0,jme0=0 ! use to aliase indices to use ghost zones
+   integer :: nbw0 = 0, nbe0 = 0, nbs0 = 0, nbn0 = 0
 
 ! local arrays -- could be made allocatable/save?
 !   REAL, DIMENSION( ims:ime , kms:kme, jms:jme,1:2) :: scion ! local array for the driver- 1=-, 2=+
@@ -706,7 +712,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                  ,kext_ft_qs,kext_ft_qg                           &
                  ,qnwfa_curr,qnifa_curr                           & ! Added by G. Thompson
                  ,qvolg_curr,qvolh_curr, qrimef_curr              &
-                 ,scw,scr,sci,scs,sch,schl,sctot,sciona             ! Explicit Lightning
+                 ,scw,scr,sci,scs,sch,schl,sctot,sciona,clnox             ! Explicit Lightning
 
 
 
@@ -779,7 +785,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 #ifdef WRF_ELEC
 ! Explicit lightning
                        ,f_elecx                                 & !lightning
-                       ,f_scw,f_scr,f_sci,f_scs,f_sch,f_schl,f_sciona & ! lightning
+                       ,f_scw,f_scr,f_sci,f_scs,f_sch,f_schl,f_sciona,f_clnox & ! lightning
 #endif
                        ,f_qzi,f_qzs,f_qzg,f_qzh,f_qvolg,f_qvolh              &
                        ,f_qrimef                                             &
@@ -869,6 +875,9 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    integer, save :: iboxmgsetup = 0, isetup = 1
 !   REAL, DIMENSION(ims:ime, kms:kme, jms:jme ) ::  ezfair,height2
    REAL, DIMENSION(kms:kme) ::  potfair
+   real, allocatable        ::  temg(:,:,:)
+   integer, allocatable, save  ::  kcldtop(:,:)
+   real :: tmp
    double precision :: etot
    double precision :: dt1,dt4,timeboxmg
    real, parameter :: jc = -2.0e-12  ! fair weather current density J (Amp m**-2) (Helsdon & Farley 1987; Chiu (1978) has -2.7e-12, quoting Gish (1944))

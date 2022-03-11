@@ -96,8 +96,7 @@ Electrification only works with the NSSL 2-moment options (with hail):
 Other variables in the &physics namelist:
 
  elec_physics                        = 0, electrification (and charge arrays) turned off (DEFAULT)
-                                     = 1, electrification turned on with "1D" lightning scheme based on Ziegler and MacGorman (1994, JAS) (only works with mp_physics = 17 or 18, i.e., 2-moment NSSL schemes)
-                                     = 2, [in progress] electrification turned on with "3D" lightning scheme (MacGorman et al. 2001, with updates)
+                                     = 1, electrification turned on (only works with mp_physics = 17, 18, or 22 i.e., 2-moment NSSL schemes)
 
  nssl_ipelec (max_dom)     ! NOTE: only set this to a nonzero value on the innermost domain
                                      = 0, charging turned off (DEFAULT)
@@ -106,7 +105,8 @@ Other variables in the &physics namelist:
                                      = 1, not used (reserved for future use)
 
  nssl_idischarge                     = 0, no discharge
-                                     = 1, discharge turned on (DEFAULT)
+                                     = 1, Cylindrical "1D" lightning scheme based on Ziegler and MacGorman (1994, JAS) 
+                                     = 2, 3D discrete discharge adapted from MacGorman et al. (2001)
 
  nssl_iscreen                        = 0, no screening layer (DEFAULT)
                                      = 1, screening layer scheme of Ziegler et al. (1991, JGR)
@@ -133,7 +133,7 @@ Other variables in the &physics namelist:
 
  nssl_lightrad                       = 12000, radius (m) of discharge cylinder for 1-D discharge scheme
 
- nssl_disfrac                        = 0.3, nominal fraction of charge removed per discharge
+ nssl_disfrac                        = 0.3, nominal fraction of charge removed per discharge (for 1D lightning)
 
  nssl_ecrit                          = 120000, breakdown electric field (Volts/m) to initiate lightning (i.e., constant value with height). (for nssl_ibrkd=1)
 
@@ -157,11 +157,20 @@ Also set the value nssl_isaund=1
 
   LIGHT      : Sum of lightning initations in the column (For 1D discharge, this counts all points that 
                  have electric field magnitude that exceeds the initiation threshold
-  LIGHTDENS  : Flash extent density (sum of the number of flashes that extend into the grid column)
+  LIGHTDENS  : Flash extent density (FED; sum of the number of flashes that extend into the grid column)
   LIGHTDIS   : A kind of "source point" density that adds up the number of points in a column where
                  lightning charge is deposited
   rscghis_2d : column sum of charge separation (magnitude) over the history interval
 
+  For 3D lightning:
+
+   flshfedic - FED from IC flashes
+   flshfedicp - FED from IC flashes (pos. channels)
+   flshfedicn - FED from IC flashes (neg. channels)
+   flshfedcg - FED from CG flashes
+   flshfedcgp - FED from CG flashes (pos. channels)
+   flshfedcgn - FED from CG flashes (neg. channels)
+   
 3D, time-dependent:
 
   POT         : Electric potential (Volts)
@@ -179,4 +188,8 @@ Also set the value nssl_isaund=1
   SCHL        : Charge density carried by hail (C/kg)
   SCTOT       : Net charge density (C m^-3) Is NOT mixing ratio
   SCIONA      : Residual charge from lightning and evaporating hydrometeors that has not been reattached to another species (C/kg)
+
+  For 3D lightning:
+    FLSHN, FLSHP : Negative/positive "channel" points
+    FLSHI : Flash initiation points
 

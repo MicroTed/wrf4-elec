@@ -1,6 +1,11 @@
        IF ( (mp_physics == NSSL_2MOM .or. mp_physics == NSSL_2MOMG .or.  &
              mp_physics == NSSL_2MOMCCN ) .and. elec_physics > 0 ) THEN
 
+!     its = ips
+!     ite = ipe
+!     jts = jps
+!     jte = jpe
+     
      if (ipelectmp.gt.0)  then ! 
 
      elec(:,:,:,:)=0.
@@ -10,10 +15,22 @@
 
      if (MOD(NINT(curr_secs),history_interval*60).eq.0) then
 !      write(0,*) 'clear arrays'
-      light(:,:)=0.
-      lightdis(:,:)=0.
-      lightdens(:,:)=0.
-       IF (elec_physics == 1 .or. elec_physics == 11 ) lightfod(:,:) = 0.
+      light(:,:) = 0.
+      lightdis(:,:) = 0.
+      lightdens(:,:) = 0.
+       IF ( idischarge == 1 ) THEN
+         lightfod(:,:) = 0.
+       ELSEIF ( idischarge == 2 ) THEN
+         flshfedic(:,:) = 0.
+         flshfedicp(:,:) = 0.
+         flshfedicn(:,:) = 0.
+         flshfedcg(:,:) = 0.
+         flshfedcgp(:,:) = 0.
+         flshfedcgn(:,:) = 0.
+         flshi(:,:,:) = 0.
+         flshn(:,:,:) = 0.
+         flshp(:,:,:) = 0.
+       ENDIF
       
      endif
 
@@ -39,6 +56,22 @@
 !       IF ( jpe == jde ) nyslm = nyslm - 1
 
        nzslm = kte-kts+1 ! for now. need to make this deeper with extended domain
+
+       IF ( ims0 == 0 ) THEN
+       write(0,*) 'ims,ime,its,ite = ',ims,ime,its,ite
+       write(0,*) 'jms,jme,jts,jte = ',jms,jme,jts,jte
+       write(0,*) 'ips,ipe,jps,jpe = ',ips,ipe,jps,jpe
+!       write(0,*) 'nxdg,nydg = ',nxdg,nydg,nzdg
+       write(0,*) 'nxslm,nyslm = ',nxslm,nyslm,nzslm
+       write(0,*) 'ng = ',its-ims,ime-ite,jts-jms,jme-jte
+       ims0 = ims - its + 1
+       ime0 = ime - ims + ims0
+       jms0 = jms - jts + 1
+       jme0 = jme - jms + jms0
+       write(0,*) 'ims0,ime0,jms0,jme0 = ',ims0,ime0,jms0,jme0
+       ENDIF
+
+
        ngx1 = ips - ims - 1
        ngx2 = ime - ipe
        ngy1 = jps - jms - 1
@@ -123,14 +156,20 @@
 
       timeboxmg = 0.0
       
-     lgtstp = 0
-     loccur = 1
+      lgtstp = 0
+      loccur = 1
+      flashcount = 0
+      IF ( idischarge == 2 ) THEN
+        initmask(:,:,:) = 0
+      ENDIF
 
      DO WHILE (loccur > 0 .and. .not. lgtstp == 1 )
  105   iter=iter+1
 
   94  format(A,9(I3,2x))
-       write(iunit,*) 'lightning iter', iter
+      IF ( wrf_dm_on_monitor() ) THEN
+      ! write(iunit,*) 'lightning iter', iter
+      ENDIF
 #if DM_PARALLEL
 !         dt1 = MPI_Wtime()
 #endif
@@ -274,6 +313,37 @@
      
        ELSEIF ( idischarge == 2 ) THEN
 
+         allocate( temg(ims:ime, kms:kme, jms:jme ) )
+         
+         temg(:,:,:) = 0.0
+       
+         DO j = jts,jte
+           DO k = kts,kte
+             DO i = its,ite
+               temg(i,k,j) = th(i,k,j)*pi_phy(i,k,j)
+!               IF ( j == jts + (jte-jts)/2 .and. i == its + (ite-its)/2 ) THEN
+!                 write(0,*) 'i,j,k,temg = ',i,j,k,temg(i,k,j)
+!               ENDIF
+             ENDDO
+           ENDDO
+         ENDDO
+
+         IF ( .not. allocated( kcldtop ) ) THEN
+           allocate( kcldtop(its-1:ite+1,jts-1:jte+1) ) ! (ims:ime, jms:jme ) )
+         ENDIF
+       
+         kcldtop(:,:) = 1
+         DO j = jts,jte
+           DO k = kts,kte
+             DO i = its,ite
+               tmp = qi_curr(i,k,j) + qc_curr(i,k,j)
+               IF ( tmp >= 1.0e-5 ) THEN
+                 kcldtop(i,j) = Max(k, kcldtop(i,j))
+               ENDIF
+             ENDDO
+           ENDDO
+         ENDDO
+
          cnoxtot = 0.0
 
          lightinit(:,:) = 0
@@ -288,30 +358,30 @@
 !         write(0,*) 'inittot,lgtstp = ',inittot,lgtstp
          
 !         write(0,*) 'call msz'
-!        CALL  lightmsz(iter,lgtstp,loccur,dt,itimestep,idischarge,nssl_elgtfestop,cnoxtot,   &
-!     &   nor,nxslm,nyslm,nzslm,ids,ide,jds,jde,kds,kde,its,jts, &
-!     &   ims0,ime0,jms0,jme0,kms,kme,temg     &
-!     &  ,dx,dy,lightradtmp,ecrittmp,disfrac,dz8w(its-1:ite+1,kts:kte,jts-1:jte+1),sctot(its-1:ite+1,kts:kte,jts-1:jte+1) &
-!     &  ,pot(its-1:ite+1,kts:kte,jts-1:jte+1) &
-!     &  ,scw(its-1:ite+1,kts:kte,jts-1:jte+1),scs(its-1:ite+1,kts:kte,jts-1:jte+1),sci(its-1:ite+1,kts:kte,jts-1:jte+1)  &
-!     &  ,scr(its-1:ite+1,kts:kte,jts-1:jte+1),sch(its-1:ite+1,kts:kte,jts-1:jte+1),schl(its-1:ite+1,kts:kte,jts-1:jte+1) &
-!     &  ,qc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qs_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
-!     &  ,qi_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
-!     &  ,qg_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qh_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
-!     &  ,qnc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qns_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
-!     &  ,qni_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qnr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
-!     &  ,qng_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qnh_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
-!     &  ,elec(its-1:ite+1,kts:kte,jts-1:jte+1,1:4),scion(its-1:ite+1,kts:kte,jts-1:jte+1,1:2)                            & ! could also pass elecmag...
-!     &  ,sciona(its-1:ite+1,kts:kte,jts-1:jte+1)                                                                         &
-!     &  ,nbw,nbe,nbs,nbn ,nbw0,nbe0,nbs0,nbn0                                                                                                 &
-!     &  ,iunit, rho(its-1:ite+1,kts:kte,jts-1:jte+1),p(its-1:ite+1,kts:kte,jts-1:jte+1)                                  &
-!     &  ,light(its-1:ite+1,jts-1:jte+1),lightdens(its-1:ite+1,jts-1:jte+1),etot,lightdis(its-1:ite+1,jts-1:jte+1)        &
-!     &  ,flshfedic,flshfedicp,flshfedicn,flshfedcg,flshfedcgp,flshfedcgn                                                 &
-!     &  ,flshi(its-1:ite+1,kts:kte,jts-1:jte+1) &
-!     &  ,flshn(its-1:ite+1,kts:kte,jts-1:jte+1),flshp(its-1:ite+1,kts:kte,jts-1:jte+1)                                   &
-!     &  ,lightmask(its-1:ite+1,jts-1:jte+1),lightinit(its-1:ite+1,jts-1:jte+1),initmask(its-1:ite+1,jts-1:jte+1,kts:kte) &
-!     &  ,nssl_einternal,nssl_tgrnd,nssl_zgrnd &
-!     &  ,f_clnox,its,jts,flashcount,clnox(its-1:ite+1,kts:kte,jts-1:jte+1),kcldtop )
+         CALL  lightmsz(iter,lgtstp,loccur,dt,itimestep,idischarge,nssl_elgtfestop,cnoxtot,   &
+      &   nor,nxslm,nyslm,nzslm,ids,ide,jds,jde,kds,kde,its,jts, &
+      &   ims0,ime0,jms0,jme0,kms,kme,temg     &
+      &  ,dx,dy,lightradtmp,ecrittmp,disfrac,dz8w(its-1:ite+1,kts:kte,jts-1:jte+1),sctot(its-1:ite+1,kts:kte,jts-1:jte+1) &
+      &  ,pot(its-1:ite+1,kts:kte,jts-1:jte+1) &
+      &  ,scw(its-1:ite+1,kts:kte,jts-1:jte+1),scs(its-1:ite+1,kts:kte,jts-1:jte+1),sci(its-1:ite+1,kts:kte,jts-1:jte+1)  &
+      &  ,scr(its-1:ite+1,kts:kte,jts-1:jte+1),sch(its-1:ite+1,kts:kte,jts-1:jte+1),schl(its-1:ite+1,kts:kte,jts-1:jte+1) &
+      &  ,qc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qs_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
+      &  ,qi_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
+      &  ,qg_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qh_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
+      &  ,qnc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qns_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
+      &  ,qni_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qnr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
+      &  ,qng_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qnh_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
+      &  ,elec(its-1:ite+1,kts:kte,jts-1:jte+1,1:4) & ! ,scion(its-1:ite+1,kts:kte,jts-1:jte+1,1:2)                            & ! could also pass elecmag...
+      &  ,sciona(its-1:ite+1,kts:kte,jts-1:jte+1)                                                                         &
+      &  ,nbw,nbe,nbs,nbn ,nbw0,nbe0,nbs0,nbn0                                                                                                 &
+      &  ,iunit, rho(its-1:ite+1,kts:kte,jts-1:jte+1),p(its-1:ite+1,kts:kte,jts-1:jte+1)                                  &
+      &  ,light(its-1:ite+1,jts-1:jte+1),lightdens(its-1:ite+1,jts-1:jte+1),etot,lightdis(its-1:ite+1,jts-1:jte+1)        &
+      &  ,flshfedic,flshfedicp,flshfedicn,flshfedcg,flshfedcgp,flshfedcgn                                                 &
+      &  ,flshi(its-1:ite+1,kts:kte,jts-1:jte+1) &
+      &  ,flshn(its-1:ite+1,kts:kte,jts-1:jte+1),flshp(its-1:ite+1,kts:kte,jts-1:jte+1)                                   &
+      &  ,lightmask(its-1:ite+1,jts-1:jte+1),lightinit(its-1:ite+1,jts-1:jte+1),initmask(its-1:ite+1,jts-1:jte+1,kts:kte) &
+      &  ,nssl_einternal,nssl_tgrnd,nssl_zgrnd &
+      &  ,f_clnox,its,jts,flashcount,clnox(its-1:ite+1,kts:kte,jts-1:jte+1),kcldtop )
        
 !       write(0,*) 'done msz'
       CALL MPI_Barrier(local_communicator, mpi_error_code)
@@ -378,14 +448,16 @@
          
        ENDDO ! while (init > 0 )
         
-        
+       deallocate( temg ) 
         
         
        ENDIF
 !       ENDIF
 
-
-     write(iunit,*) 'discharge done', iter
+     IF ( wrf_dm_on_monitor() ) THEN
+ !      write(iunit,*) 'discharge done  iter ', iter
+ !      write(0,*) 'discharge done  iter ', iter
+     ENDIF
 
 !       REDUCE charge everywhere by 5 %  to reduce E if iterations do not
 !       succeed in doing so. 
@@ -409,10 +481,21 @@
 
        endif
  
-       if ( loccur > 0 .and. .not. lgtstp == 1 ) write(iunit,*) 'loccur,lgtstp = ',loccur,lgtstp
+       IF ( wrf_dm_on_monitor() ) THEN
+!         if ( loccur > 0 .and. .not. lgtstp == 1 ) write(iunit,*) 'loccur,lgtstp = ',loccur,lgtstp
+       ENDIF
 
        ENDDO ! while
 
+
+! #if DM_PARALLEL
+#if ( defined(DM_PARALLEL)  &&   ! defined(STUBMPI) )
+      n = 1
+      CALL MPI_AllReduce(flashcount, impitotout, n, MPI_INTEGER, MPI_SUM, local_communicator, ierr)
+      
+      flashcount = impitotout(1)
+      
+#endif
 
 
 !       CALL SCREENING LAYER HERE -- Ziegler et al. (1991) 
@@ -422,6 +505,8 @@
 !       Also should update sctot after the screening charge application.
 
       IF ( iscreen .ge. 1  ) THEN 
+      
+!      write(0,*) 'call screen'
 
       CALL screen(iscreen,nxslm,nyslm,nzslm,dt,dx,dy,ng &
        &  ,ids,ide,jds,jde,kds,kde,its,ite,jts,jte,ims,ime,kms,kme,jms,jme                 &
@@ -431,11 +516,16 @@
        &  ,sci(its-3:ite+3,kts:kte,jts-3:jte+3),sctot(its-3:ite+3,kts:kte,jts-3:jte+3)     &
        &  ,rho(its-3:ite+3,kts:kte,jts-3:jte+3)                                            &
        & ,iunit)
+       
+!       write(0,*) 'done screen'
 
       ENDIF
 
-      IF (elec_physics == 1 .or. elec_physics == 11 ) THEN
-        write (0,*) 'MAX LIGHTNING FLASH RATE in this tile THIS TIME STEP', MAXVAL(light)
+      IF ( idischarge > 1 .and. wrf_dm_on_monitor() ) THEN
+!        write (0,*) 'MAX LIGHTNING FLASH RATE in this tile THIS TIME STEP', flashcount ! MAXVAL(light)
+!        write (iunit,*) 'MAX LIGHTNING FLASH RATE in this tile THIS TIME STEP', flashcount ! MAXVAL(light)
+        write (0,*) 'Number of flashes in this time step:', flashcount ! MAXVAL(light)
+        write (iunit,*) 'Number of flashes in this time step:', flashcount ! MAXVAL(light)
       ENDIF
 !        write(0,*) 'times for boxmg = ',timeboxmg
 !        write(iunit,*) 'times for boxmg = ',timeboxmg
