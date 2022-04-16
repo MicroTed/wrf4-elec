@@ -45,6 +45,16 @@
 !       nydg = jme-jms+1
 !       nzdg = kme-kms+1
 
+       IF (channel) THEN
+         its = max(i_start(1),ids)
+         ite = min(i_end(1),ide-1)
+       ELSE
+         its = max(i_start(1),ids+sz)
+         ite = min(i_end(1),ide-1-sz)
+       ENDIF
+       jts = max(j_start(1),jds+sz)
+       jte = min(j_end(1),jde-1-sz)
+
 !       write(*,*) 'its,ite,jts,jte = ',its,ite,jts,jte
 !       write(*,*) 'ips,ipe,jps,jpe = ',ips,ipe,jps,jpe
 !       write(*,*) 'kts,kte, kps,kpe, kms,kme = ',kts,kte, kps,kpe, kms,kme 

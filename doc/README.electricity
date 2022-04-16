@@ -137,6 +137,11 @@ Other variables in the &physics namelist:
 
  nssl_ecrit                          = 120000, breakdown electric field (Volts/m) to initiate lightning (i.e., constant value with height). (for nssl_ibrkd=1)
 
+ 3D discharge namelist options
+ NSSL_EINTERNAL  =   200.0000  : internal field for channel resistance (V/m)
+ NSSL_TGRND      =   266.1600  : Temperature threshold for considering CG flash
+ NSSL_ZGRND      =  -1.000000  : Altitude threshold for considering CG flash (only if > 0, otherwise uses temperature)
+
 The Takahashi (1978, 1984) charge separation requires a lookup table to be read in. 
 The table file is 'takahashi.txt' and needs to be copied from WRF/elec to the working 
 directory. To use this option, the NSSL microphysics can read an internal namelist, 

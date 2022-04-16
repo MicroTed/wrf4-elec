@@ -994,7 +994,7 @@
      
 #ifdef DM_PARALLEL
       USE module_dm, ONLY : &
-                  local_communicator, mytask, ntasks, ntasks_x, ntasks_y
+                  local_communicator, mytask, ntasks, ntasks_x, ntasks_y, mytask_x, mytask_y
 #endif
 !
       implicit none
@@ -1034,6 +1034,37 @@
       elec(:,ny+1,:,1) = 0.0
       elec(:,:,nz,1) = 0.0
 
+      IF ( mytask_x == 0 ) THEN
+       DO kz = 1,nz-1
+        DO jy = 1,ny
+!          DO ix = 0,1
+          DO ix = 0,0
+       
+!            phi0(ix,jy,kz) = phi0(2,jy,kz)
+            phi0(ix,jy,kz) = phi0(1,jy,kz)
+
+         ENDDO
+        ENDDO
+       ENDDO
+      
+      ENDIF
+
+      IF ( mytask_x == ntasks_x-1 ) THEN
+       DO kz = 1,nz-1
+        DO jy = 1,ny
+!          DO ix = nx,nx+1
+          DO ix = nx+1,nx+1
+       
+!            phi0(ix,jy,kz) = phi0(nx-1,jy,kz)
+            phi0(ix,jy,kz) = phi0(nx,jy,kz)
+
+         ENDDO
+        ENDDO
+       ENDDO
+      
+      ENDIF
+
+      
       do kz = 1,nz-1
        do jy = 1,ny
         do ix = 1,nx
@@ -1054,6 +1085,37 @@
 !      elec(nx,:,:,2) = 0.0
       elec(nx+1,:,:,2) = 0.0
       elec(:,:,nz,2) = 0.0
+
+      IF ( mytask_y == 0 ) THEN
+       DO kz = 1,nz-1
+!        DO jy = 0,1
+        DO jy = 0,0
+          DO ix = 1,nx
+       
+!            phi0(ix,jy,kz) = phi0(ix,2,kz)
+            phi0(ix,jy,kz) = phi0(ix,1,kz)
+
+         ENDDO
+        ENDDO
+       ENDDO
+      
+      ENDIF
+
+
+      IF ( mytask_y == ntasks_y - 1 ) THEN
+       DO kz = 1,nz-1
+!        DO jy = ny,ny+1
+        DO jy = ny+1,ny+1
+          DO ix = 1,nx
+       
+!            phi0(ix,jy,kz) = phi0(ix,ny-1,kz)
+            phi0(ix,jy,kz) = phi0(ix,ny,kz)
+
+         ENDDO
+        ENDDO
+       ENDDO
+      
+      ENDIF
 
       do kz = 1,nz-1
        do jy = 1,ny
