@@ -4436,7 +4436,7 @@ CALL lsm_mosaic_init(IVGTYP,config_flags%ISWATER,config_flags%ISURBAN,config_fla
      SELECT CASE(config_flags%mp_physics)
      CASE (NSSL_2MOM,NSSL_2MOMG,NSSL_2MOMCCN)
        IF ( config_flags%elec_physics > 0 ) THEN
-         nssl_ipelec_tmp = nssl_ipelec
+         nssl_ipelec_tmp = Max(1,nssl_ipelec)
        ELSE
          nssl_ipelec_tmp = 0.0
        ENDIF
