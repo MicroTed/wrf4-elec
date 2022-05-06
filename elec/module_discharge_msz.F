@@ -196,6 +196,7 @@
       parameter (eps = 1.0e-7)
       real    telec,tcharge,dtcomp
       integer i1,j1,k1,ichneu,idist,ipos,ineg
+      real :: rdist
       real :: e1,e2,tem
       integer ichpos,ichneg,sizetest
       real    scthend1,scthend2,scthendp,scthendn
@@ -315,7 +316,9 @@
       integer :: idownward
       integer :: ifoundic
 
-   !   integer, save :: itermax ! maximum iterations for flash search
+      integer, save :: itermax = 0 ! maximum iterations for flash search
+      integer, save :: maxdist = 0 ! maximum rectilinear distance for flash search
+      integer, save :: ibalsize = 0 ! size of 1D array for tracking volume/charge by iteration
       integer :: itern, iterp ! which iteration of neg/pos channel volume to stop at
       real, allocatable, save :: chgavailiter(:),chgavailitersum(:) ! array to sum up available lightning charge in each wildfire iteration
       real, allocatable, save :: voliter(:),volitersum(:)
@@ -324,20 +327,20 @@
       integer iretry   ! counter for nretry
       integer kzbrkd,iread
       integer loccur,nliter
-      integer :: itermax ! maximum iterations for flash search
+    !  integer :: itermax ! maximum iterations for flash search
       integer nstep,nxl,nyl,nzl,ngt,na
       integer :: nxend, nyend
       integer,parameter :: id1=1,jd1=1,kd1=1,istag=1,jstag=1,kstag=1
       integer :: ilight
       integer iex,iey,iez,iemag,ipot,ie
-      integer, save :: klgtmin = 3 ! lowest level to extend lightning: to avoid corona layers
+      integer, save :: klgtmin = 1 ! lowest level to extend lightning: can set higher than 1 if explicit ions are used (to avoid corona layers)
       real, parameter :: zlgtmin = 600.
       integer imapx,imapy,imapz,ig13,ig23,igsr
 
 !       integer ninit  ! number of possible initiation points
-       integer npick
-       parameter(npick = 10000)
-       integer ipick(npick,3)
+       integer, save :: npick = 0
+!       parameter(npick = 10000)
+       integer, allocatable, save :: ipick(:,:) ! ipick(npick,3)
        integer ichoose
        integer idum
 
@@ -422,7 +425,7 @@
 !      save zlev,ebrkd,ebrkdp
       real estop(1000)
       real estopcg(1000)
-      real trje(nenum,nttim,ninfo)
+      real trje(nenum,0:nttim,ninfo)
 
 
 !-----------------------------------------------------------------------------
@@ -493,14 +496,28 @@
        icountth = Min(icountth0, Max(2, Nint(icountth0*1000./dx)))
 
 
-       itermax = Max( nxend, nyend, kde - kds)
-       itermax = Min( itermax-1, Int(0.5*100000./dx) ) ! limit lightning half-width to 100 km
 
        IF ( .not. allocated( chgavailiter ) ) THEN
-         allocate( chgavailiter(-itermax:itermax) )
-         allocate( chgavailitersum(-itermax:itermax) )
-         allocate( voliter(-itermax:itermax) )
-         allocate( volitersum(-itermax:itermax) )
+         itermax = Max( nxend, nyend, kde - kds)
+         itermax = Min( itermax-1, Int(0.5*100000./dx) ) ! limit lightning half-width to 100 km
+         IF ( ibal == 1 ) THEN
+           maxdist = itermax
+         ELSEIF ( ibal == 2 ) THEN
+           maxdist = 3*itermax
+         ELSE
+           maxdist = itermax
+         ENDIF
+         allocate( chgavailiter(-maxdist:maxdist) )
+         allocate( chgavailitersum(-maxdist:maxdist) )
+         allocate( voliter(-maxdist:maxdist) )
+         allocate( volitersum(-maxdist:maxdist) )
+
+       ENDIF
+       
+       IF ( npick == 0 ) THEN
+         npick = nxend*nyend*(kde - kds)/4
+         allocate ( ipick(npick,3) )
+
        ENDIF
 
 
@@ -1593,7 +1610,7 @@
 
 #endif
 
-      IF ( my_rank == 0 .and. ndebug > 1 ) write(iunit,'(1x,i6,a)') ninittot, ' possible starting points'
+      IF ( my_rank == 0 .and. ndebug >= 1 ) write(iunit,'(1x,i6,a)') ninittot, ' possible starting points'
 !
          IF ( ninittot == 0 ) THEN
            lgtstp = 1
@@ -1786,6 +1803,7 @@
 !
 !  Initialize lstop--indicates trajectory end.
 !
+      trje(1:2,0,:) = 0
       trje(1,1,lstop) = 0.
       trje(2,1,lstop) = 0.
 !
@@ -2045,12 +2063,13 @@
      &  trje(in,it,llx) + dtelec(in) * trje(in,it,lex)
       trje(in,it+1,lly) =     & 
      &  trje(in,it,lly) + dtelec(in) * trje(in,it,ley)
-      ELSE
+      ELSEIF ( it >= 1 ) THEN
       trje(in,it+1,llx) = trje(in,it,llx)
       trje(in,it+1,lly) = trje(in,it,lly)
       ENDIF
-      trje(in,it+1,llz) =     & 
-     &  trje(in,it,llz) + dtelec(in) * trje(in,it,lez)
+
+      IF ( it >= 1 ) THEN  
+        trje(in,it+1,llz) = trje(in,it,llz) + dtelec(in) * trje(in,it,lez)
      
      IF ( it == 1 .and. dtelec(in) * trje(in,it,lez) < 0.0 ) idownward = 1
 !
@@ -2077,6 +2096,8 @@
       write(*,*) '==================================================='
       write(*,*) '==================================================='
       end if
+
+      ENDIF
 
       nttimendcg(in) = it
 !
@@ -2623,7 +2644,7 @@
       IF (ichend(ichneg).eq.2) potthrn=min(trje(1,nttimend(1),lpot),trje(2,nttimend(2),lpot))
 !
 !  isendn, jsendn, ksendn are the indices of the lower left hand corner
-!  of the grid volume where the end of the negative channel is found.
+!  of the grid cell where the end of the negative channel is found.
 !
 !      isendn = idxlgt(ichneg,nttimend(ichneg),1) - igslg0 + 1
 !      jsendn = idxlgt(ichneg,nttimend(ichneg),2) - jgslg0 + 1
@@ -2632,7 +2653,7 @@
       ksendn = idxlgt(ichneg,nttimend(ichneg),3)
 !
 !  isendp, jsendp, ksendp are the indices of the lower left hand corner
-!  of the grid volume where the end of the positive channel is found.
+!  of the grid cell where the end of the positive channel is found.
 !
 !      isendp = idxlgt(ichpos,nttimend(ichpos),1) - igslg0 + 1
 !      jsendp = idxlgt(ichpos,nttimend(ichpos),2) - jgslg0 + 1
@@ -2832,8 +2853,11 @@
 !       t2(ix,jy,kz) = 0.0
       ! use rectilinear distance for potential change along channel
       idist = Abs((ixbeg + ix) - islgt) + Abs( (jybeg + jy ) - jslgt)
+      rdist = Sqrt(float( ((ixbeg + ix) - islgt)**2 + ( (jybeg + jy ) - jslgt)**2 ))
       if ( ichend(ichpos) .eq. 2 ) then
-        if ( pot(ix,kz,jy) .gt. potthrp  + eint*(dx*idist + Abs(zlev(kslgt,ix,jy) - zlev(kz,ix,jy)))  ) then
+!        if ( pot(ix,kz,jy) .gt. potthrp  + eint*(dx*idist + Abs(zlev(kslgt,ix,jy) - zlev(kz,ix,jy)))  ) then
+        if ( pot(ix,kz,jy) .gt. potthrp + eint*Sqrt( (dx*rdist)**2 + Abs(zlev(kslgt,ix,jy) - zlev(kz,ix,jy))**2) ) then
+!        if ( pot(ix,kz,jy) .gt. potthrp ) then ! + eint*Sqrt( (dx*rdist)**2 + Abs(zlev(kslgt,ix,jy) - zlev(kz,ix,jy))**2) ) then
          npsurfp = npsurfp + 1
           if ( sctot(ix,kz,jy) .gt. scthp ) then
 !            t2(ix,jy,kz) = Max( 1.01, t2(ix,jy,kz) )
@@ -2843,7 +2867,9 @@
         end if
       end if
       if ( ichend(ichneg) .eq. 2) then
-        if ( pot(ix,kz,jy) .lt. potthrn - eint*(dx*idist + Abs(zlev(kslgt,ix,jy) - zlev(kz,ix,jy))) ) then
+!        if ( pot(ix,kz,jy) .lt. potthrn - eint*(dx*idist + Abs(zlev(kslgt,ix,jy) - zlev(kz,ix,jy))) ) then
+        if ( pot(ix,kz,jy) .lt. potthrn - eint*Sqrt( (dx*rdist)**2 + Abs(zlev(kslgt,ix,jy) - zlev(kz,ix,jy))**2)  ) then
+!        if ( pot(ix,kz,jy) .lt. potthrn ) then ! - eint*Sqrt( (dx*rdist)**2 + Abs(zlev(kslgt,ix,jy) - zlev(kz,ix,jy))**2)  ) then
          npsurfn = npsurfn + 1
           if ( sctot(ix,kz,jy) .lt. scthn ) then
 !            t2(ix,jy,kz) = Min( -1.01, t2(ix,jy,kz) )
@@ -2895,14 +2921,14 @@
 
       IF ( mytask == ichooserank ) THEN
 ! set starting point
-        t4(isendp-igslg0,jsendp-jgslg0,ksendp) = itype*itermax
+        t4(isendp-igslg0,jsendp-jgslg0,ksendp) = itype*maxdist
       ENDIF
       
 !      write(0,*) 'call searchl for pos end'
       call searchl   &
-     &  (itype,itermax,icountp,isendp,jsendp,ksendp,id1,jd1,kd1   &
+     &  (itype,itermax,maxdist,icountp,isendp,jsendp,ksendp,id1,jd1,kd1   &
      &  ,nx,ny,nz,nx,ny,nz,nxend,nyend,1   &
-     &  ,cons1,cons2,t2,t4,icgnflg,klgtmin)
+     &  ,cons1,cons2,t2,t4,icgnflg,klgtmin,ibal)
       end if
 !
 !  search for negative continuous discharge region = positive leader breakdown region
@@ -2915,13 +2941,13 @@
       if ( ichend(ichneg) .eq. 2 ) then
       IF ( mytask == ichooserank ) THEN 
 ! set starting point
-        t4(isendn-igslg0,jsendn-jgslg0,ksendn) = itype*itermax
+        t4(isendn-igslg0,jsendn-jgslg0,ksendn) = itype*maxdist
       ENDIF
 !      write(0,*) 'call searchl for neg end'
       call searchl   &
-     &  (itype,itermax,icountn,isendn,jsendn,ksendn,id1,jd1,kd1   &
+     &  (itype,itermax,maxdist,icountn,isendn,jsendn,ksendn,id1,jd1,kd1   &
      &  ,nx,ny,nz,nx,ny,nz,nxend,nyend,1   &
-     &  ,cons1,cons2,t2,t4,icgpflg,klgtmin)
+     &  ,cons1,cons2,t2,t4,icgpflg,klgtmin,ibal)
       end if
 !      write(0,*) 'done searchl'
 ! calculate lnox in positive and negative continuous discharge regions
@@ -2929,7 +2955,7 @@
       do kz = 1,nz-kd1
       do jy = jyb,jye
       do ix = ixb,ixe
-      IF (abs(t4(ix,jy,kz)).lt.abs(itype)*itermax.and.abs(t4(ix,jy,kz)).gt.1.01) THEN
+      IF (abs(t4(ix,jy,kz)).lt.abs(itype)*maxdist.and.abs(t4(ix,jy,kz)).gt.1.01) THEN
        dv=dx*dy*dzz(ix,kz,jy)
 !       nox(ix,kz,jy)=min(dx,dzz(ix,kz,jy))*(alnox+blnox*pn(ix,kz,jy))/(db(ix,kz,jy)*avogadro)
 !        nox(ix,kz,jy)=dzz(ix,kz,jy)*(alnox+blnox*pn(ix,kz,jy))/(db(ix,kz,jy)*avogadro)
@@ -3429,14 +3455,14 @@
 
 #ifdef MPI
 
-       n = 2*itermax+1
-       CALL MPI_AllReduce(chgavailiter(-itermax), chgavailitersum(-itermax), n, MPI_REAL, MPI_SUM, my_comm, mpi_error_code)
+       n = 2*maxdist+1
+       CALL MPI_AllReduce(chgavailiter(-maxdist), chgavailitersum(-maxdist), n, MPI_REAL, MPI_SUM, my_comm, mpi_error_code)
        
-       chgavailiter(-itermax:itermax) = chgavailitersum(-itermax:itermax)
+       chgavailiter(-maxdist:maxdist) = chgavailitersum(-maxdist:maxdist)
        chgavailitersum(:) = 0.0
 
-       CALL MPI_AllReduce(voliter(-itermax), chgavailitersum(-itermax), n, MPI_REAL, MPI_SUM, my_comm, mpi_error_code)
-       voliter(-itermax:itermax) = chgavailitersum(-itermax:itermax)
+       CALL MPI_AllReduce(voliter(-maxdist), chgavailitersum(-maxdist), n, MPI_REAL, MPI_SUM, my_comm, mpi_error_code)
+       voliter(-maxdist:maxdist) = chgavailitersum(-maxdist:maxdist)
        chgavailitersum(:) = 0.0
 
 
@@ -3489,14 +3515,14 @@
 #endif
 
 
-        chgavailitersum(itermax) = chgavailiter(itermax)
-        chgavailitersum(-itermax) = chgavailiter(-itermax)
-        volitersum( itermax) = voliter( itermax)
-        volitersum(-itermax) = voliter(-itermax)
+        chgavailitersum(maxdist) = chgavailiter(maxdist)
+        chgavailitersum(-maxdist) = chgavailiter(-maxdist)
+        volitersum( maxdist) = voliter( maxdist)
+        volitersum(-maxdist) = voliter(-maxdist)
           IF ( my_rank == 0 ) THEN
 !            write(iunit,*) 'n, chgavailitersum(n), chgavailitersum(-n)'
           ENDIF
-        DO n = itermax-1,1,-1
+        DO n = maxdist-1,1,-1
           chgavailitersum( n) = chgavailitersum( n+1) + chgavailiter( n)
           chgavailitersum(-n) = chgavailitersum(-n-1) + chgavailiter(-n)
 
@@ -3618,7 +3644,7 @@
          itern = -1
           IF ( Abs(scnetn) .gt. Abs(scnetp) ) THEN
             ! find index itern that just exceeds scnetp
-            DO n = -itermax,-1
+            DO n = -maxdist,-1
      !         IF ( my_rank == 0 ) write(iunit,*) 'n:',n,chgavailitersum(n),tmp
               IF ( Abs(chgavailitersum(n)) > tmp ) THEN
                 itern = n
@@ -3636,7 +3662,7 @@
             END WHERE
           ELSE
             ! find index iterp that just exceeds scnetn
-            DO n = itermax,1,-1
+            DO n = maxdist,1,-1
        !       IF ( my_rank == 0 ) write(iunit,*) 'p:',n,chgavailitersum(n),tmp
               IF ( Abs(chgavailitersum(n)) > tmp ) THEN
                 iterp = n
@@ -3692,7 +3718,7 @@
          itern = -1
           IF ( Abs(scnetn) .gt. Abs(scnetp) ) THEN
             ! find index itern that just exceeds scnetp
-            DO n = -itermax,-1
+            DO n = -maxdist,-1
        !       IF ( my_rank == 0 ) write(iunit,*) 'n:',n,chgavailitersum(n),tmp
               IF ( Abs(chgavailitersum(n)) > tmp ) THEN
                 itern = n
@@ -3710,7 +3736,7 @@
             END WHERE
           ELSE
             ! find index iterp that just exceeds scnetn
-            DO n = itermax,1,-1
+            DO n = maxdist,1,-1
         !      IF ( my_rank == 0 ) write(iunit,*) 'p:',n,chgavailitersum(n),tmp
               IF ( Abs(chgavailitersum(n)) > tmp ) THEN
                 iterp = n
@@ -4862,9 +4888,9 @@
 
 !
       subroutine searchl    &
-     &  (itype,itermax,icount,is,js,ks,id1,jd1,kd1    &
+     &  (itype,itermax,maxdist,icount,is,js,ks,id1,jd1,kd1    &
      &  ,nx,ny,nz,nxl,nyl,nzl,nxend,nyend,nor    &
-     &  ,cons1,cons2,tthr,tflg,icgflg,klgtmin)
+     &  ,cons1,cons2,tthr,tflg,icgflg,klgtmin,ibal)
 ! 
 #ifdef MPI
       USE module_dm, ONLY : &
@@ -4886,7 +4912,7 @@
       parameter (ndebug=0)
       integer n,icheck,myicheck,itype,icount,icount2,numflg
       integer :: ichecksum, icountsum
-      integer, intent(IN) :: itermax,nxend,nyend
+      integer, intent(IN) :: itermax,maxdist,nxend,nyend,ibal
       integer icgflg
       INTEGER :: mpi_error_code = 1      
       integer i0,j0,k0
@@ -5029,31 +5055,31 @@
 !  itype .eq. 1
 !
       if ( itype .eq. 1 ) then
-      if ( tthr(i1,j1,k1) .gt. 0.5 ) then
-      numflg = numflg + 1
-      if ( tflg(i2,j2,k2) .gt. 0.5 ) then 
-      if(tflg(i1,j1,k1).lt.0.5) then
-      icheck = icheck+1
-      tflg(i1,j1,k1) = xsval
+        if ( tthr(i1,j1,k1) .gt. 0.5 ) then
+          numflg = numflg + 1
+          if ( tflg(i2,j2,k2) .gt. 0.5 ) then 
+            if(tflg(i1,j1,k1).lt.0.5) then
+              icheck = icheck+1
+              tflg(i1,j1,k1) = xsval
      
-      end if
-      end if
-      end if
+            end if
+          end if
+        end if
       end if
 !
 !  itype .eq. -1
 !
       if ( itype .eq. -1 ) then
-      if ( tthr(i1,j1,k1) .lt. -0.5 ) then
-      numflg = numflg + 1
-      if ( tflg(i2,j2,k2) .lt. -0.5 ) then 
-      if(tflg(i1,j1,k1).gt.-0.5) then
-      icheck = icheck+1
-      tflg(i1,j1,k1) = -xsval
-      
-      end if
-      end if
-      end if
+        if ( tthr(i1,j1,k1) .lt. -0.5 ) then
+         numflg = numflg + 1
+         if ( tflg(i2,j2,k2) .lt. -0.5 ) then 
+           if(tflg(i1,j1,k1).gt.-0.5) then
+             icheck = icheck+1
+             tflg(i1,j1,k1) = -xsval
+       
+           end if
+         end if
+        end if
       end if
 !
       end do

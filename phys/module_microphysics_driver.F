@@ -869,9 +869,9 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    integer l,iter,lgtstp,loccur,nxdg,nydg,nzdg
    integer, save :: numic,numcgp,numcgn
    double precision, save :: cnoxtot,cnoxall,cnoxic,cnoxcg
-   integer :: inittot, flashcount, count, init, maskcount, maskcounttot
+   integer :: inittot, inittot2, flashcount, count, init, init2, maskcount, maskcounttot
    logical :: irelax = .false.
-   integer :: maxiter = 60
+   integer :: maxiter = 120
    integer, save :: iboxmgsetup = 0, isetup = 1
 !   REAL, DIMENSION(ims:ime, kms:kme, jms:jme ) ::  ezfair,height2
    REAL, DIMENSION(kms:kme) ::  potfair
@@ -919,7 +919,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    ENDIF
 
 ! set this to true to print out the global max/min for W on each time step.
-   IF ( .false. ) THEN
+   IF ( .true. ) THEN
       wmax = maxval( w(ips:ipe,kps:kpe,jps:jpe) )
       wmin = minval( w(ips:ipe,kps:kpe,jps:jpe) )
 #if ( defined(DM_PARALLEL)  &&   ! defined(STUBMPI) )
@@ -2348,7 +2348,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 
     CASE (NSSL_2MOMCCN)
          CALL wrf_debug(100, 'microphysics_driver: calling nssl_2momccn mp=18')
-         write(0,*) 'elec_physics = ',elec_physics
+!         write(0,*) 'elec_physics = ',elec_physics
          IF (PRESENT (QV_CURR) .AND.                           &
              PRESENT (QC_CURR) .AND. PRESENT (QNDROP_CURR)  .AND. &
              PRESENT (QR_CURR) .AND. PRESENT (QNR_CURR)  .AND. &

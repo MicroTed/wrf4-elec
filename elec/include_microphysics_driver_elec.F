@@ -20,7 +20,7 @@
       lightdens(:,:) = 0.
        IF ( idischarge == 1 ) THEN
          lightfod(:,:) = 0.
-       ELSEIF ( idischarge == 2 ) THEN
+       ELSEIF ( idischarge >= 2 ) THEN
          flshfedic(:,:) = 0.
          flshfedicp(:,:) = 0.
          flshfedicn(:,:) = 0.
@@ -82,9 +82,9 @@
        ENDIF
 
 
-       ngx1 = ips - ims - 1
+       ngx1 = -ims0 ! ips - ims - 1
        ngx2 = ime - ipe
-       ngy1 = jps - jms - 1
+       ngy1 = -jms0 ! jps - jms - 1
        ngy2 = jme - jpe
        
        ! while its,ite are being used, need to check for north/east boundary
@@ -93,6 +93,8 @@
 !       write(*,*) 'arrays x: ',-ngx1,nxslm,ngx2, nxslm+ngx2 + ngx1 + 1, ime-ims+1
 !       write(*,*) 'arrays y: ',-ngy1,nyslm,ngy2, nyslm+ngy2 + ngy1 + 1, jme-jms+1
 !       write(*,*) 'arrays z: ',nzslm, kme-kms+1
+!       write(*,*) 'ims:ime , jms:jme = ',ims,ime , jms,jme
+!       write(*,*) 'ips,ipe,jps,jpe = ',ips,ipe,jps,jpe
 
        nnxs(1) = nxslm
        nnys(1) = nyslm
@@ -398,6 +400,7 @@
 
        ! check lightinit and lightmask for hits in lightinit that are not covered by lightmask
        init = 0
+       init2 = 0
        maskcount = 0
        maskcounttot = 0
         outer: DO  i=its-1,ite+1
@@ -406,24 +409,30 @@
            IF ( lightmask(i,j) == 0 .and. lightinit(i,j) >= 1 ) THEN 
             init = init + 1
            ENDIF
-           IF ( lightmask(i,j) > 0 ) maskcount = maskcount + 1
+           IF ( lightmask(i,j) > 0 ) THEN
+             maskcount = maskcount + 1
+             IF ( lightinit(i,j) >= 1 ) init2 = init2 + 1
+           ENDIF
          ENDDO
        ENDDO outer
        
        inittot = init
+       inittot2 = init2
        maskcounttot = maskcount
-
+       
 
 ! #if DM_PARALLEL
 #if ( defined(DM_PARALLEL)  &&   ! defined(STUBMPI) )
       impitotin(1) = init
       impitotin(2) = maskcount
-      n = 2
+      impitotin(3) = init2
+      n = 3
       CALL MPI_AllReduce(impitotin, impitotout, n, MPI_INTEGER, MPI_SUM, local_communicator, ierr)
 !      call wrf_dm_sum_integers(impitotin,impitotout)
       
       inittot = impitotout(1)
       maskcounttot = impitotout(2)
+      inittot2 = impitotout(3)
       
 #endif
 !     write(iunit,*) 'count,init,inittot,maskcount,maskcounttot',count,init,inittot,maskcount,maskcounttot
@@ -453,6 +462,17 @@
        IF ( wrf_dm_on_monitor() ) THEN
          write(iunit,*) 'msz done: iter,count,loccur,lgtstp,remaining inits', iter,count,loccur,lgtstp,inittot
        ENDIF
+
+       IF ( maskcounttot > 0 .and. inittot == 0 .and. inittot2 > 0 ) THEN
+         ! recalculate electric field
+         loccur = 1
+         lgtstp = 0
+         
+       ENDIF
+       
+       ! temporary hack to force one flash per iter
+       ! inittot = 0
+       
 
         IF ( count >= maxiter ) EXIT
          

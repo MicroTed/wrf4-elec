@@ -145,7 +145,6 @@
       integer kcldtop(-ng+1:nx+ng,-ng+1:ny+ng)
 
       integer, save :: imap2=0
-!      integer  ghost
       integer  ghosti1,ghostj1,ghosti2,ghostj2
       integer  ghosti,ghostj
       integer km5,km4,kp5,kp4
@@ -154,29 +153,6 @@
       
 ! ########################################################
 !
-!
-!        ghost=min(ime-ite,jme-jte,its-abs(ims),jts-abs(jms))
-!
-!        ALLOCATE(dz(its-ghost:ite+ghost;kts:kte;jts-ghost:jte+ghost))
-!        ALLOCATE(pot(its-ghost:ite+ghost;kts:kte;jts-ghost:jte+ghost))
-!        ALLOCATE(sci(its-ghost:ite+ghost;kts:kte;jts-ghost:jte+ghost))
-!        ALLOCATE(scw(its-ghost:ite+ghost;kts:kte;jts-ghost:jte+ghost))
-!        ALLOCATE(qc(its-ghost:ite+ghost;kts:kte;jts-ghost:jte+ghost))
-!        ALLOCATE(qi(its-ghost:ite+ghost;kts:kte;jts-ghost:jte+ghost))
-!
-!        ALLOCATE(t0(its-ghost:ite+ghost;jts-ghost:jte+ghost;kts:kte))
-!        ALLOCATE(t1(its-ghost:ite+ghost;jts-ghost:jte+ghost;kts:kte))
-!        ALLOCATE(t4(its-ghost:ite+ghost;jts-ghost:jte+ghost;kts:kte))
-!        ALLOCATE(t5(its-ghost:ite+ghost;jts-ghost:jte+ghost;kts:kte))
-!        ALLOCATE(t6(its-ghost:ite+ghost;jts-ghost:jte+ghost;kts:kte))
-!        ALLOCATE(t7(its-ghost:ite+ghost;jts-ghost:jte+ghost;kts:kte))
-!        ALLOCATE(t8(its-ghost:ite+ghost;jts-ghost:jte+ghost;kts:kte))
-!        ALLOCATE(t9(its-ghost:ite+ghost;jts-ghost:jte+ghost;kts:kte))
-!        ALLOCATE(conda(its-ghost:ite+ghost;jts-ghost:jte+ghost;kts:kte))
-!        ALLOCATE(condc(its-ghost:ite+ghost;jts-ghost:jte+ghost;kts:kte))
-!        ALLOCATE(dzi2(its-ghost:ite+ghost;jts-ghost:jte+ghost;kts:kte))
-!        ALLOCATE(dslay(its-ghost:ite+ghost;jts-ghost:jte+ghost;kts:kte))
-!        ALLOCATE(zlayer(its-ghost:ite+ghost;jts-ghost:jte+ghost;kts:kte))
 
         t0(:,:,:)=0.0 ; t1(:,:,:)=0.0
         t4(:,:,:)=0.0 ; t5(:,:,:)=0.0 ; t6(:,:,:)=0.0 
@@ -225,7 +201,7 @@
        dz2(ix,jy,kz) = dz(ix,kz,jy)     
 
 ! find cloud top
-      IF ( iscreen >= 2 ) THEN
+      IF ( iscreen == 2 ) THEN
          IF ( t0(ix,jy,kz) > qctol ) THEN
            kcldtop(ix,jy) = Max(kz,kcldtop(ix,jy))
          ENDIF
@@ -338,7 +314,7 @@
       do jy = 1,ny
       do ix = 1,nx
 
-!      IF (dz2(ix,jy,kz).gt.1.0) THEN ! because of mysterious small dz values in ghost zones...
+!      IF (dz2(ix,jy,kz).gt.1.0) THEN ! because of mysterious small dz values in halo zones...
         dzi2(ix,jy,kz) = 0.5/dz2(ix,jy,kz)
          if (ndebug) then
           IF (dz2(ix,jy,kz).le.1.or.dzi2(ix,jy,kz).gt.20000.or.dzi2(ix,jy,kz).lt.0.) THEN
