@@ -392,6 +392,8 @@
       IF (ite.lt.ide-1) id2=0 
       IF (jts.gt.jds+1) jd1=0 
       IF (jte.lt.jde-1) jd2=0 
+      
+!      write(0,*) 'screen: id1/2,jd1/2 = ',id1,id2,jd1,jd2
 
       do kz = 1+kd1,nz-kd1*1!2
 !      do jy = -ng+1+jd1,ny+ng-jd2
@@ -428,7 +430,7 @@
       ENDIF
 
 
-
+!     write(0,*) 'screen: jy,ix limits: ',-ng+1+jd1+jstag,ny+ng-jd2-jstag,-ng+1+id1+istag,nx+ng-id2-istag
       do kz1 = kzb,kze
 
 !      do jy = -ng+1+jd1,ny+ng-jd2
@@ -468,7 +470,8 @@
 !
 !  x-direction
 !
-      IF ( iscreen == 1 .and. (ix .gt. 3 .or. id1 == 0 ) .and. ( ix .lt. nx-3*istag .or. id2 == 0 ) ) THEN
+      IF ( iscreen == 1 .and. ix >= 1 .and. ix <= nx .and. (ix .gt. 3 .or. id1 == 0  ) .and. &
+           ( ix .lt. nx-3*istag .or. id2 == 0 .and. ix  ) ) THEN
 
        if ( t0(ix+istag,jy,kz) .lt. qctol .and.     &
           t0(ix+istag+1,jy,kz) .lt. qctol2 .and.   &
@@ -534,7 +537,7 @@
 !
 !  y-direction
 !
-      IF ( iscreen == 1 .and. ( jy .gt. 3 .or. jd1 == 0 ) .and. ( jy .lt. ny-3*jstag .or. jd2 == 0 ) ) THEN
+      IF ( iscreen == 1 .and. jy >= 1 .and. jy <= ny .and. ( jy .gt. 3 .or. jd1 == 0 ) .and. ( jy .lt. ny-3*jstag .or. jd2 == 0 ) ) THEN
 
         if ( t0(ix,jy+jstag,kz) .lt. qctol .and.    &
           t0(ix,jy+jstag+1,kz) .lt. qctol2 .and.   &
@@ -711,7 +714,7 @@
       end do ! jy = -ng+1+jd1,ny+ng-jd2*1 
       end do ! kz =  1+kd1 ,nz-kd1*2 
 !
-!    now smooth t8
+!    disable smoothing -- can put charge in clear air
 !
 !      call smooth(nx,ny,nz,ng,its,ite,jts,jte,ids,ide,jds,jde,   &
 !     &           ng+1,ng+1,ng+1,ng+1,1,t8,t9)
