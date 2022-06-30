@@ -545,6 +545,7 @@
        &  ,qi_curr(its-3:ite+3,kts:kte,jts-3:jte+3),scw(its-3:ite+3,kts:kte,jts-3:jte+3)   &
        &  ,sci(its-3:ite+3,kts:kte,jts-3:jte+3),sctot(its-3:ite+3,kts:kte,jts-3:jte+3)     &
        &  ,rho(its-3:ite+3,kts:kte,jts-3:jte+3)                                            &
+       &  ,sciona(its-3:ite+3,kts:kte,jts-3:jte+3)                                         &
        & ,iunit)
        
 !       write(0,*) 'done screen'

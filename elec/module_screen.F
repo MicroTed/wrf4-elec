@@ -12,7 +12,7 @@
 
       subroutine screen(iscreen,nx,ny,nz,dtp,dx,dy,ng   &
      &    ,ids,ide,jds,jde,kds,kde,its,ite,jts,jte,ims,ime,kms,kme,jms,jme    &
-     &    ,dz,pot,qc,qi,scw,sci,sctot,dn,iunit)
+     &    ,dz,pot,qc,qi,scw,sci,sctot,dn,sciona,iunit)
 !
 !
 !  5.13.2002  Added vertical grid stretch corrections
@@ -139,6 +139,7 @@
       real sci(-ng+1:nx+ng,nz,-ng+1:ny+ng)
       real sctot(-ng+1:nx+ng,nz,-ng+1:ny+ng)
       real dn(-ng+1:nx+ng,nz,-ng+1:ny+ng)
+      real sciona(-ng+1:nx+ng,nz,-ng+1:ny+ng)
       real qc(-ng+1:nx+ng,nz,-ng+1:ny+ng)
       real qi(-ng+1:nx+ng,nz,-ng+1:ny+ng)
 
@@ -756,8 +757,9 @@
       
         ENDIF
       ENDIF
-      scw(ix,kz,jy) = scw(ix,kz,jy)+t8(ix,jy,kz)*max(qc(ix,kz,jy),0.0)/(dn(ix,kz,jy)*t0(ix,jy,kz))
-      sci(ix,kz,jy) = sci(ix,kz,jy)+t8(ix,jy,kz)*max(qi(ix,kz,jy),0.0)/(dn(ix,kz,jy)*t0(ix,jy,kz))
+      ! scw(ix,kz,jy) = scw(ix,kz,jy)+t8(ix,jy,kz)*max(qc(ix,kz,jy),0.0)/(dn(ix,kz,jy)*t0(ix,jy,kz))
+      ! sci(ix,kz,jy) = sci(ix,kz,jy)+t8(ix,jy,kz)*max(qi(ix,kz,jy),0.0)/(dn(ix,kz,jy)*t0(ix,jy,kz))
+       sciona(ix,kz,jy) = sciona(ix,kz,jy)+t8(ix,jy,kz)/dn(ix,kz,jy)
       sctot(ix,kz,jy) = sctot(ix,kz,jy)+t8(ix,jy,kz)
       
         IF ( t8(ix,jy,kz) .gt. 0.) THEN
