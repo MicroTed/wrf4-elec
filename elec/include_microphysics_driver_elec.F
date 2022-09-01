@@ -71,6 +71,7 @@
        write(0,*) 'ims,ime,its,ite = ',ims,ime,its,ite
        write(0,*) 'jms,jme,jts,jte = ',jms,jme,jts,jte
        write(0,*) 'ips,ipe,jps,jpe = ',ips,ipe,jps,jpe
+       write(0,*) 'kts,kte,kms,kme = ',kts,kte,kms,kme
 !       write(0,*) 'nxdg,nydg = ',nxdg,nydg,nzdg
        write(0,*) 'nxslm,nyslm = ',nxslm,nyslm,nzslm
        write(0,*) 'ng = ',its-ims,ime-ite,jts-jms,jme-jte
@@ -79,17 +80,22 @@
        jms0 = jms - jts + 1
        jme0 = jme - jms + jms0
        write(0,*) 'ims0,ime0,jms0,jme0 = ',ims0,ime0,jms0,jme0
+       write(0,*) 'nbw,nbe,nbs,nbn = ',nbw,nbe,nbs,nbn
        ENDIF
 
 
        ngx1 = -ims0 ! ips - ims - 1
-       ngx2 = ime - ipe
+       ngx2 = ime - ite
        ngy1 = -jms0 ! jps - jms - 1
-       ngy2 = jme - jpe
+       ngy2 = jme - jte
+       
+!       write(0,*) 'ngx1/2,ngy1/2 = ',ngx1,ngx2,ngy1,ngy2
+!       write(0,*) 'dims x/y = ', (nxslm+ngx2 - (-ngx1))+1, (nyslm+ngy2+ngy1+1), ime-ims+1,jme-jms+1
+!       write(0,*) 'dims of light1 = ', size(light,1), size(light,2)
        
        ! while its,ite are being used, need to check for north/east boundary
-       IF ( ipe == ide ) ngx2 = ngx2 + 1
-       IF ( jpe == jde ) ngy2 = ngy2 + 1
+!       IF ( ipe == ide ) ngx2 = ngx2 + 1
+!       IF ( jpe == jde ) ngy2 = ngy2 + 1
 !       write(*,*) 'arrays x: ',-ngx1,nxslm,ngx2, nxslm+ngx2 + ngx1 + 1, ime-ims+1
 !       write(*,*) 'arrays y: ',-ngy1,nyslm,ngy2, nyslm+ngy2 + ngy1 + 1, jme-jms+1
 !       write(*,*) 'arrays z: ',nzslm, kme-kms+1
@@ -312,14 +318,15 @@
 
 !    Ziegler and MacGorman (1994,JAS) simple column discharge within cylinders
 
+!        write(0,*) 'call light1d: ngx1+its:its+nxslm+ngx1,jts+ngy1:nyslm+ngy1+jts = ', &
+!                ngx1+its,its+nxslm+ngx1,jts+ngy1,nyslm+ngy1+jts
       CALL  light1d(iter,loccur,   &
-      &   nor,nxslm,nyslm,nzslm,ngx1,ngx2,ngy1,ngy2      &
-      &  ,dx,dy,lightradtmp,ibrkdtmp,ecrittmp,disfrac,dz8w,sctot &
-      &  ,elecmag                               &
-      &  ,sciona &
-      &  ,nbw,nbe,nbs,nbn                                                                                                 &
-      &  ,iunit, rho                           &
-      &  ,light,lightdens,etot,lightdis )
+      &   nor,nxslm,nyslm,nzslm,ngx1,ngx2,ngy1,ngy2,      &
+      &   dx,dy,lightradtmp,ibrkdtmp,ecrittmp,disfrac,dz8w,sctot, &
+      &   elecmag, sciona,                               &
+      &   nbw,nbe,nbs,nbn,                                        &
+      &   iunit, rho,                                             &
+      &   light,lightdens,lightdis,etot )
      
         lightfod(:,:) = (dx**2/lightradtmp**2)*light(:,:)
      
@@ -463,7 +470,7 @@
          write(iunit,*) 'msz done: iter,count,loccur,lgtstp,remaining inits', iter,count,loccur,lgtstp,inittot
        ENDIF
 
-       IF ( maskcounttot > 0 .and. inittot == 0 .and. inittot2 > 0 ) THEN
+       IF ( maskcounttot > 0 .and. inittot >= 0 .and. inittot2 > 0 ) THEN
          ! recalculate electric field
          loccur = 1
          lgtstp = 0

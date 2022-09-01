@@ -164,7 +164,7 @@
         ecnrml=0.0 ; eanrml =0.0 ;dslay(:,:,:)=0.0 ; zlayer(:,:,:)=0.0
         condc(:,:,:)=1.0e-15 ; conda(:,:,:)=1.0e-14 ; dzi2(:,:,:) = 0.0 
 
-         write(iunit,*) 'kds,kde',kds,kde
+!         write(iunit,*) 'kds,kde',kds,kde
 
 !         dz(0,:,:)=dz(1,:,:)
 !         dz(nx+1,:,:)=dz(nx,:,:)

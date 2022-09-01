@@ -672,8 +672,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    REAL, OPTIONAL, DIMENSION( ims:ime , kms:kme, jms:jme ) , INTENT(INOUT)   :: noninduc
    INTEGER,   DIMENSION( ims:ime, jms:jme) :: lightmask,lightinit
    INTEGER,   DIMENSION( ims:ime, jms:jme,kms:kme) :: initmask
-   integer :: ims0=0,ime0=0,jms0=0,jme0=0 ! use to aliase indices to use ghost zones
-   integer :: nbw0 = 0, nbe0 = 0, nbs0 = 0, nbn0 = 0
+   integer, save :: ims0=0,ime0=0,jms0=0,jme0=0 ! use to aliase indices to use ghost zones
+   integer, save :: nbw0 = 0, nbe0 = 0, nbs0 = 0, nbn0 = 0
 
 ! local arrays -- could be made allocatable/save?
 !   REAL, DIMENSION( ims:ime , kms:kme, jms:jme,1:2) :: scion ! local array for the driver- 1=-, 2=+
@@ -926,8 +926,10 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
       wmax = wrf_dm_max_real ( wmax )
       wmin = wrf_dm_min_real ( wmin )
 #endif
+      IF ( wrf_dm_on_monitor() ) THEN
       WRITE( wrf_err_message , * ) 'microphysics_driver: GLOBAL w max/min = ', wmax, wmin
       CALL wrf_message ( wrf_err_message )
+      ENDIF
    ENDIF
 
 #ifdef XEON_OPTIMIZED_WSM5
