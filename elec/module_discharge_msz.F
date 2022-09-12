@@ -14,9 +14,9 @@
      &   nor,nx,ny,nz,ids,ide,jds,jde,kds,kde,its,jts,      &
      &   ims,ime,jms,jme,kms,kme,temg    &
      &  ,dxx,dyy,lightrad,elght1,elgt1,dzz,sctot,pot &
-     &  ,scw,scs,sci,scr,sch,schl &
-     &  ,qc,qs,qi,qr,qg,qh &
-     &  ,qnc,qns,qni,qnr,qng,qnh &
+!     &  ,scw,scs,sci,scr,sch,schl &
+!     &  ,qc,qs,qi,qr,qg,qh &
+!     &  ,qnc,qns,qni,qnr,qng,qnh &
      &  ,elec        &
      &  ,sciona            &
      &  ,nbw,nbe,nbs,nbn,nbw0,nbe0,nbs0,nbn0    &
@@ -54,7 +54,7 @@
       integer nbw,nbe,nbs,nbn,nbw0,nbe0,nbs0,nbn0
       
       double precision chg,chgneg,chgpos,chgtot,chgpnts,cnoxtot ! total net negative/positive charge in storm (not including corona)
-      real  :: chgmax
+      real  :: chgmax, scionatmp
       
       integer ix,jy,kz,kz1,i,j,k,count,counttot,n,m
       integer nor,nx,ny,nz
@@ -92,26 +92,26 @@
       real sciona(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
 !      real t0(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
       real pot(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real sch(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real,optional :: schl(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real scw(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real scr(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real sci(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real scs(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-
-      real qg(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real,optional :: qh(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qr(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qc(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qi(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qs(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      
-      real qng(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real,optional :: qnh(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qnr(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qnc(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qni(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
-      real qns(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real sch(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real,optional :: schl(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real scw(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real scr(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real sci(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real scs(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!
+!     real qg(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real,optional :: qh(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qr(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qc(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qi(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qs(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     
+!     real qng(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real,optional :: qnh(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qnr(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qnc(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qni(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
+!     real qns(-nbw:nx+1+nbe,nz,-nbs:ny+1+nbn)
       
       integer kcldtop(-nbw:nx+1+nbe,-nbs:ny+1+nbn)
 
@@ -987,96 +987,19 @@
       
        if (abs(scdisch(ix,jy,kz)).gt.1.e-3) write(6,*) 'scdisch,sctot', scdisch(ix,jy,kz),sctot(ix,kz,jy)     
 
+       IF ( scdisch(ix,jy,kz) /= 0.0 ) THEN
+
+         scionatmp = sciona(ix,kz,jy)
+         if (sctot(ix,kz,jy) .gt.  0) sciona(ix,kz,jy)=sciona(ix,kz,jy)-scdisch(ix,jy,kz) ! both in units of C/kg
+         if (sctot(ix,kz,jy) .lt.  0) sciona(ix,kz,jy)=sciona(ix,kz,jy)+scdisch(ix,jy,kz)
+         
+         ! update the net charge. Could instead set scionatmp to +/- scdisch(ix,jy,kz) and add that to both sctot and sciona
+         sctot(ix,kz,jy) = sctot(ix,kz,jy) + db(ix,kz,jy)*( sciona(ix,kz,jy) - scionatmp )
+
+        ENDIF
 
       ENDIF
 
-!     compute area fraction Ax/sum(Ax). where Ax=(Qx*rhoair/(Nx*rhox))**2/3 * Nx 
-!   but qnr etc. is N/rhoair, and need to convert scdisch to C/kg
-!   So have Ax=(Qx*rhoair/(Nx*rhoair*rhox))**2/3 * (Nx*rhoair) = (Qx/(Nx*rhox))**2/3 * (Nx*rhoair)
-!  or Ax = rhoair*(Qx/(rhox))**2/3 * (Nx)**(1/3), and the factor of rhoair cancels out in the ratio Ax/Atot
-    
-      if(qnr(ix,kz,jy).lt.0.) qnr(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qr(ix,kz,jy).lt.0.) qr(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qng(ix,kz,jy).lt.0.) qng(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qg(ix,kz,jy).lt.0.) qg(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qni(ix,kz,jy).lt.0.) qni(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qi(ix,kz,jy).lt.0.) qi(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qns(ix,kz,jy).lt.0.) qns(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qs(ix,kz,jy).lt.0.) qs(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qnc(ix,kz,jy).lt.0.) qnc(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qc(ix,kz,jy).lt.0.) qc(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if (present(qh)) then
-      if(qnh(ix,kz,jy).lt.0.) qnh(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qh(ix,kz,jy).lt.0.) qh(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      endif
-
-      fracs = 0.0
-      fraci = 0.0
-      frach = 0.0
-      fracw = 0.0
-      fracr = 0.0
-      if (qs(ix,kz,jy).gt.qmin) fracs=((qs(ix,kz,jy)/rhos)**(2./3.) ) * qns(ix,kz,jy)**(1./3.)
-      if (qi(ix,kz,jy).gt.qmin) fraci=((qi(ix,kz,jy)/rhoi)**(2./3.) ) * qni(ix,kz,jy)**(1./3.)
-      if (qh(ix,kz,jy).gt.qmin) frach=((qg(ix,kz,jy)/rhog)**(2./3.) ) * qng(ix,kz,jy)**(1./3.)
-      if (qc(ix,kz,jy).gt.qmin) fracw=((qc(ix,kz,jy)/rhow)**(2./3.) ) * qnc(ix,kz,jy)**(1./3.)
-      if (qr(ix,kz,jy).gt.qmin) fracr=((qr(ix,kz,jy)/rhor)**(2./3.) ) * qnr(ix,kz,jy)**(1./3.)
-
-      deninv = 1. ! /db(ix,kz,jy)
-      fractot=fracs+fraci+frach &
-     &             +fracr+fracw
-
-      if (present(qh)) frachl=((qh(ix,kz,jy)/rhoh)**2./3. ) * qnh(ix,kz,jy)**(1./3.)
-
-      if (present(qh))  fractot=fractot+frachl
-     
-!'     reduce/redistribute scdisch on scx based on area fraction 
-   
-      IF ( Abs(sctot(ix,kz,jy)) > chgthr) THEN
-      IF ( fractot > 0. ) THEN
-      
-      if (qs(ix,kz,jy).gt.qmin) then ! avoid division by zero if fractot = 0 because qx=0
-      if (sctot(ix,kz,jy) .gt.  chgthr) scs(ix,kz,jy)=scs(ix,kz,jy)-scdisch(ix,jy,kz)*(fracs/fractot)*deninv
-      if (sctot(ix,kz,jy) .lt. -chgthr) scs(ix,kz,jy)=scs(ix,kz,jy)+scdisch(ix,jy,kz)*(fracs/fractot)*deninv
-      endif
-
-      if (qi(ix,kz,jy).gt.qmin) then
-      if (sctot(ix,kz,jy) .gt.  chgthr) sci(ix,kz,jy)=sci(ix,kz,jy)-scdisch(ix,jy,kz)*(fraci/fractot)*deninv
-      if (sctot(ix,kz,jy) .lt. -chgthr) sci(ix,kz,jy)=sci(ix,kz,jy)+scdisch(ix,jy,kz)*(fraci/fractot)*deninv
-      endif
-
-      if (qr(ix,kz,jy).gt.qmin) then
-      if (sctot(ix,kz,jy) .gt.  chgthr) scr(ix,kz,jy)=scr(ix,kz,jy)-scdisch(ix,jy,kz)*(fracr/fractot)*deninv
-      if (sctot(ix,kz,jy) .lt. -chgthr) scr(ix,kz,jy)=scr(ix,kz,jy)+scdisch(ix,jy,kz)*(fracr/fractot)*deninv
-      endif
-
-      if (qg(ix,kz,jy).gt.qmin) then
-      if (sctot(ix,kz,jy) .gt.  chgthr) sch(ix,kz,jy)=sch(ix,kz,jy)-scdisch(ix,jy,kz)*(frach/fractot)*deninv
-      if (sctot(ix,kz,jy) .lt. -chgthr) sch(ix,kz,jy)=sch(ix,kz,jy)+scdisch(ix,jy,kz)*(frach/fractot)*deninv
-      endif
-
-      if (qc(ix,kz,jy).gt.qmin) then
-      if (sctot(ix,kz,jy) .gt.  chgthr) scw(ix,kz,jy)=scw(ix,kz,jy)-scdisch(ix,jy,kz)*(fracw/fractot)*deninv
-      if (sctot(ix,kz,jy) .lt. -chgthr) scw(ix,kz,jy)=scw(ix,kz,jy)+scdisch(ix,jy,kz)*(fracw/fractot)*deninv
-      endif
-   
-      if (present(qh)) then
-      if (qh(ix,kz,jy).gt.qmin) then
-      if (sctot(ix,kz,jy) .gt.  chgthr) schl(ix,kz,jy)=schl(ix,kz,jy)-scdisch(ix,jy,kz)*(frachl/fractot)*deninv
-      if (sctot(ix,kz,jy) .lt. -chgthr) schl(ix,kz,jy)=schl(ix,kz,jy)+scdisch(ix,jy,kz)*(frachl/fractot)*deninv
-      endif
-      endif
-      
-      ELSE
-
-      if (sctot(ix,kz,jy) > 0.0) then
-        sciona(ix,kz,jy) = sciona(ix,kz,jy) - scdisch(ix,jy,kz)*deninv
-!        chgrtn = chgrtn + scdisch(ix,jy,kz)*dv
-      elseif (sctot(ix,kz,jy) <= 0.0) THEN 
-        sciona(ix,kz,jy) = sciona(ix,kz,jy) + scdisch(ix,jy,kz)*deninv
-!        chgrtp = chgrtp + scdisch(ix,jy,kz)*dv
-      endif
-      
-      ENDIF
 
 !     UPDATE sctot     
 
@@ -1084,8 +1007,6 @@
        totpos1 = totpos1 + Max(0.0, sctot(ix,kz,jy)*dv)
        
 
-       sctot(ix,kz,jy) = db(ix,kz,jy)*(sch(ix,kz,jy)+scr(ix,kz,jy)+sci(ix,kz,jy)+scs(ix,kz,jy)+scw(ix,kz,jy)+sciona(ix,kz,jy))
-       if (present(qh)) sctot(ix,kz,jy)=sctot(ix,kz,jy)+db(ix,kz,jy)*schl(ix,kz,jy)
 
        totneg2 = totneg2 + Min(0.0, sctot(ix,kz,jy)*dv)
        totpos2 = totpos2 + Max(0.0, sctot(ix,kz,jy)*dv)
@@ -1093,7 +1014,6 @@
 !      if (sctot(ix,kz,jy).lt.0.) write(0,*) 'IN DISCHARGE', sctot(ix,kz,jy),sch(ix,kz,jy),scr(ix,kz,jy),sci(ix,kz,jy),scs(ix,kz,jy),scw(ix,kz,jy),ix,jy,kz
 !      if (sctot(ix,kz,jy).lt.0.) write(0,*) 'IN DISCHARGE', scw(ix,kz,jy),scdisch(ix,jy,kz),fracw,fractot,qc(ix,kz,jy),rhow,qnc(ix,kz,jy),fracs,fraci,frach,fracr,qr(ix,kz,jy),rhor,qnr(ix,kz,jy)
 
-      ENDIF ! Abs(sctot(ix,kz,jy)) > chgthr)
       
       end do
       end do
@@ -4327,143 +4247,29 @@
        dv = dxx*dyy*dzz(ix,kz,jy)
        deninv = 1./db(ix,kz,jy)
 
-       tmp = db(ix,kz,jy)*(sch(ix,kz,jy)+scr(ix,kz,jy)+sci(ix,kz,jy)+scs(ix,kz,jy)+scw(ix,kz,jy)+sciona(ix,kz,jy))
-       if (present(qh)) tmp = tmp+db(ix,kz,jy)*schl(ix,kz,jy)
+!       tmp =  db(ix,kz,jy)*sctot(ix,kz,jy)
+       tmp =  sctot(ix,kz,jy)
 
        totneg0 = totneg0 + Min(0.0, tmp*dv)
        totpos0 = totpos0 + Max(0.0, tmp*dv)
 
+       totneg1 = totneg1 + Min(0.0, sctot(ix,kz,jy)*dv)
+       totpos1 = totpos1 + Max(0.0, sctot(ix,kz,jy)*dv)
 
       scnetnp = scnetnp + Max(0.0, scdisch(ix,jy,kz) )*dv ! /gt(1,1,kz,imapz)
       scnetnn = scnetnn + Min(0.0, scdisch(ix,jy,kz) )*dv ! /gt(1,1,kz,imapz)
 
        IF ( scdisch(ix,jy,kz) /= 0.0 ) THEN
+
+         scionatmp = sciona(ix,kz,jy)
+!         if (sctot(ix,kz,jy) .gt.  0) sciona(ix,kz,jy)=sciona(ix,kz,jy)-scdisch(ix,jy,kz) ! sciona in units of C/kg but scdisch in C/m^3
+!         if (sctot(ix,kz,jy) .lt. 0) sciona(ix,kz,jy)=sciona(ix,kz,jy)+scdisch(ix,jy,kz)
+         sciona(ix,kz,jy) = sciona(ix,kz,jy) + deninv*scdisch(ix,jy,kz)
+         
+         ! update the net charge. Could instead set scionatmp to +/- scdisch(ix,jy,kz) and add that to both sctot and sciona
+         sctot(ix,kz,jy) = sctot(ix,kz,jy) + db(ix,kz,jy)*( sciona(ix,kz,jy) - scionatmp )
        
 
-!     compute area fraction Ax/sum(Ax). where Ax=(Qx*rhoair/(Nx*rhox))**2/3 * Nx 
-!   but qnr etc. is N/rhoair, and need to convert scdisch to C/kg
-!   So have Ax=(Qx*rhoair/(Nx*rhoair*rhox))**2/3 * (Nx*rhoair) = (Qx/(Nx*rhox))**2/3 * (Nx*rhoair)
-!  or Ax = rhoair*(Qx/(rhox))**2/3 * (Nx)**(1/3), and the factor of rhoair cancels out in the ratio Ax/Atot
-    
-
-      if(qnr(ix,kz,jy).lt.0.) qnr(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qr(ix,kz,jy).lt.0.) qr(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qng(ix,kz,jy).lt.0.) qng(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qg(ix,kz,jy).lt.0.) qg(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qni(ix,kz,jy).lt.0.) qni(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qi(ix,kz,jy).lt.0.) qi(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qns(ix,kz,jy).lt.0.) qns(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qs(ix,kz,jy).lt.0.) qs(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qnc(ix,kz,jy).lt.0.) qnc(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qc(ix,kz,jy).lt.0.) qc(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if (present(qh)) then
-      if(qnh(ix,kz,jy).lt.0.) qnh(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      if(qh(ix,kz,jy).lt.0.) qh(ix,kz,jy)=0. ! if neg numbers get SQRT3 (-X) = NaN??...FORTRAN's favorite number.
-      endif
-
-      fracs=((qs(ix,kz,jy)/rhos)**(2./3.) ) * qns(ix,kz,jy)**(1./3.)
-      fraci=((qi(ix,kz,jy)/rhoi)**(2./3.) ) * qni(ix,kz,jy)**(1./3.)
-      frach=((qg(ix,kz,jy)/rhog)**(2./3.) ) * qng(ix,kz,jy)**(1./3.)
-      fracw=((qc(ix,kz,jy)/rhow)**(2./3.) ) * qnc(ix,kz,jy)**(1./3.)
-      fracr=((qr(ix,kz,jy)/rhor)**(2./3.) ) * qnr(ix,kz,jy)**(1./3.)
-
-      fractot=fracs+fraci+frach &
-     &             +fracr+fracw
-
-      if (present(qh)) THEN
-        frachl=((qh(ix,kz,jy)/rhoh)**2./3. ) * qnh(ix,kz,jy)**(1./3.)
-        fractot=fractot+frachl
-      endif
-     
-      IF ( fractot > 0.0 ) THEN
-      
-!'     reduce/redistribute scdisch on scx based on area fraction 
-   
-!      if (qs(ix,kz,jy).gt.qmin) then ! avoid division by zero if fractot = 0 because qx=0
-      IF ( fracs > 0.0 ) THEN
-      if (sctot(ix,kz,jy) >=  scthp) THEN
-        scs(ix,kz,jy) = scs(ix,kz,jy) + scdisch(ix,jy,kz)*(fracs/fractot)*deninv
-        chgrtn = chgrtn + scdisch(ix,jy,kz)*(fracs/fractot)*dv
-      elseif (sctot(ix,kz,jy) <= -scthn) THEN 
-        scs(ix,kz,jy) = scs(ix,kz,jy) + scdisch(ix,jy,kz)*(fracs/fractot)*deninv
-        chgrtp = chgrtp + scdisch(ix,jy,kz)*(fracs/fractot)*dv
-      endif
-      endif
-
-!      if (qi(ix,kz,jy).gt.qmin) then
-      IF ( fraci > 0.0 ) THEN
-      if (sctot(ix,kz,jy) >=  scthp) then
-        sci(ix,kz,jy) = sci(ix,kz,jy) + scdisch(ix,jy,kz)*(fraci/fractot)*deninv
-        chgrtn = chgrtn + scdisch(ix,jy,kz)*(fraci/fractot)*dv
-      elseif (sctot(ix,kz,jy) <= -scthn) THEN 
-         sci(ix,kz,jy) = sci(ix,kz,jy) + scdisch(ix,jy,kz)*(fraci/fractot)*deninv
-        chgrtp = chgrtp + scdisch(ix,jy,kz)*(fraci/fractot)*dv
-      endif
-      endif
-
-!      if (qr(ix,kz,jy).gt.qmin) then
-      IF ( fracr > 0.0 ) THEN
-      if (sctot(ix,kz,jy) >=  scthp) then
-        scr(ix,kz,jy) = scr(ix,kz,jy) + scdisch(ix,jy,kz)*(fracr/fractot)*deninv
-        chgrtn = chgrtn + scdisch(ix,jy,kz)*(fracr/fractot)*dv
-      elseif (sctot(ix,kz,jy) <= -scthn) THEN 
-        scr(ix,kz,jy) = scr(ix,kz,jy) + scdisch(ix,jy,kz)*(fracr/fractot)*deninv
-        chgrtp = chgrtp + scdisch(ix,jy,kz)*(fracr/fractot)*dv
-      endif
-      endif
-
-!      if (qg(ix,kz,jy).gt.qmin) then
-      IF ( frach > 0.0 ) THEN
-      if (sctot(ix,kz,jy) >=  scthp) then
-        sch(ix,kz,jy) = sch(ix,kz,jy) + scdisch(ix,jy,kz)*(frach/fractot)*deninv
-        chgrtn = chgrtn + scdisch(ix,jy,kz)*(frach/fractot)*dv
-      elseif (sctot(ix,kz,jy) <= -scthn) THEN 
-        sch(ix,kz,jy) = sch(ix,kz,jy) + scdisch(ix,jy,kz)*(frach/fractot)*deninv
-        chgrtp = chgrtp + scdisch(ix,jy,kz)*(frach/fractot)*dv
-      endif
-      endif
-
-!      if (qc(ix,kz,jy).gt.qmin) then
-      IF ( fracw > 0.0 ) THEN
-      if (sctot(ix,kz,jy) >=  scthp) then
-        scw(ix,kz,jy) = scw(ix,kz,jy) + scdisch(ix,jy,kz)*(fracw/fractot)*deninv
-        chgrtn = chgrtn + scdisch(ix,jy,kz)*(fracw/fractot)*dv
-      elseif (sctot(ix,kz,jy) <= -scthn) THEN 
-        scw(ix,kz,jy) = scw(ix,kz,jy) + scdisch(ix,jy,kz)*(fracw/fractot)*deninv
-        chgrtp = chgrtp + scdisch(ix,jy,kz)*(fracw/fractot)*dv
-      endif
-      endif
-   
-      if (present(qh)) then
-!      if (qh(ix,kz,jy).gt.qmin) then
-      IF ( frachl > 0.0 ) THEN
-      if (sctot(ix,kz,jy) >=  scthp) then
-        schl(ix,kz,jy) = schl(ix,kz,jy) + scdisch(ix,jy,kz)*(frachl/fractot)*deninv
-        chgrtn = chgrtn + scdisch(ix,jy,kz)*(frachl/fractot)*dv
-      elseif (sctot(ix,kz,jy) <= -scthn) THEN 
-        schl(ix,kz,jy) = schl(ix,kz,jy) + scdisch(ix,jy,kz)*(frachl/fractot)*deninv
-        chgrtp = chgrtp + scdisch(ix,jy,kz)*(frachl/fractot)*dv
-      endif
-      endif
-      endif
-
-      qnetp = qnetp + Max(0.0, scdisch(ix,jy,kz) )*dv ! /gt(1,1,kz,imapz)
-      qnetn = qnetn + Min(0.0, scdisch(ix,jy,kz) )*dv ! /gt(1,1,kz,imapz)
-      
-      ELSE
-      
-      if (sctot(ix,kz,jy) > 0.0) then
-        sciona(ix,kz,jy) = sciona(ix,kz,jy) + scdisch(ix,jy,kz)*deninv
-        chgrtn = chgrtn + scdisch(ix,jy,kz)*dv
-      elseif (sctot(ix,kz,jy) <= 0.0) THEN 
-        sciona(ix,kz,jy) = sciona(ix,kz,jy) + scdisch(ix,jy,kz)*deninv
-        chgrtp = chgrtp + scdisch(ix,jy,kz)*dv
-      endif
-
-      qnetp = qnetp + Max(0.0, scdisch(ix,jy,kz) )*dv ! /gt(1,1,kz,imapz)
-      qnetn = qnetn + Min(0.0, scdisch(ix,jy,kz) )*dv ! /gt(1,1,kz,imapz)
-      
-      ENDIF ! fractot > 0
 
       IF ( scdisch(ix,jy,kz) .lt. 0.0 ) THEN
 !        an(ix,jy,kz,lscni) = an(ix,jy,kz,lscni)-scdisch(ix,jy,kz)/ec
@@ -4477,11 +4283,7 @@
 
 !     UPDATE sctot     
 
-       totneg1 = totneg1 + Min(0.0, sctot(ix,kz,jy)*dv)
-       totpos1 = totpos1 + Max(0.0, sctot(ix,kz,jy)*dv)
        
-       sctot(ix,kz,jy) = db(ix,kz,jy)*(sch(ix,kz,jy)+scr(ix,kz,jy)+sci(ix,kz,jy)+scs(ix,kz,jy)+scw(ix,kz,jy)+sciona(ix,kz,jy))
-       if (present(qh)) sctot(ix,kz,jy) = sctot(ix,kz,jy)+db(ix,kz,jy)*schl(ix,kz,jy)
 
        totneg2 = totneg2 + Min(0.0, sctot(ix,kz,jy)*dv)
        totpos2 = totpos2 + Max(0.0, sctot(ix,kz,jy)*dv)
@@ -4547,10 +4349,10 @@
       
       write(iunit,'(a,2(2x,1pe12.5))') 'check totals: ',chgrtp,chgrtn
 !      write(iunit,'(a,2(2x,1pe12.5))') 'check totals2: ',chgrtp2,chgrtn2
-!      write(iunit,'(a,2(2x,1pe12.5))') 'check totals3: ',scnetnp,scnetnn
+      write(iunit,'(a,2(2x,1pe12.5))') 'check totals3: ',scnetnp,scnetnn
 !      write(iunit,'(a,2(2x,1pe12.5))') 'check totals4: ',qnetp,qnetn
       write(iunit,'(a,3(2x,1pe12.5))') 'pos/neg0: ',totpos0,totneg0,totpos0+totneg0
-!      write(iunit,'(a,3(2x,1pe12.5))') 'pos/neg1: ',totpos1,totneg1,totpos1+totneg1
+      write(iunit,'(a,3(2x,1pe12.5))') 'pos/neg1: ',totpos1,totneg1,totpos1+totneg1
       write(iunit,'(a,3(2x,1pe12.5))') 'pos/neg2: ',totpos2,totneg2,totpos2+totneg2
       
       ENDIF
