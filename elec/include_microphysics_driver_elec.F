@@ -49,11 +49,13 @@
          its = max(i_start(1),ids)
          ite = min(i_end(1),ide-1)
        ELSE
-         its = max(i_start(1),ids+sz)
+         its = ips ! max(i_start(1),ids+sz)
          ite = min(i_end(1),ide-1-sz)
+         IF ( ime > ide ) ite = ide - 1 
        ENDIF
-       jts = max(j_start(1),jds+sz)
+       jts = jps ! max(j_start(1),jds+sz)
        jte = min(j_end(1),jde-1-sz)
+       IF ( jme > jde ) jte = jde - 1
 
 !       write(*,*) 'its,ite,jts,jte = ',its,ite,jts,jte
 !       write(*,*) 'ips,ipe,jps,jpe = ',ips,ipe,jps,jpe
