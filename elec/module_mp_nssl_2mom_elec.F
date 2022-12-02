@@ -1629,6 +1629,7 @@ MODULE module_mp_nssl_2mom
 !debug        write(0,*) 'Setting lcin to ',lcin
       ENDIF
       na = ltmp
+      write(0,*) 'nssl_init: na = ',na
       
       ln(lc) = lnc
       ln(lr) = lnr
@@ -2225,8 +2226,8 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
 
       double precision :: chgneg1,chgpos1,chgneg2,chgpos2,chgneg3,chgpos3
       double precision :: chgiona1,chgiona2,chgiona3,sctot3,scwtot,scrtot,scitot,scstot,schtot,schltot
-      double precision :: scwmax,scrmax,scimax,scsmax,schmax,schlmax
-      double precision :: scwmin,scrmin,scimin,scsmin,schmin,schlmin
+      double precision :: scwmax,scrmax,scimax,scsmax,schmax,schlmax,sctotmax
+      double precision :: scwmin,scrmin,scimin,scsmin,schmin,schlmin,sctotmin
 !c
 !c integrated charging rate pos/neg
 !c
@@ -2500,6 +2501,9 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
      scsmin  = 0.0d0
      schmin  = 0.0d0
      schlmin  = 0.0d0
+     
+     sctotmax = 0.0d0
+     sctotmin = 0.0d0
 
      cwmass1 = 0.0d0
      cwmass2 = 0.0d0
@@ -3260,6 +3264,19 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
          sctot(ix,kz,jy)  = sctot(ix,kz,jy)+dn(ix,kz,jy)*schl(ix,kz,jy)
         
          ENDIF
+         
+         IF ( ndebug > 0 .and. kz == 1 .and. Abs( sctot(ix,kz,jy) ) > 3.e-9 ) THEN
+           write(0,*) 'Large surface charge? at i,j = ',ix,jy
+           write(0,*) 'sctot = ', sctot(ix,kz,jy)/dn(ix,kz,jy)
+           write(0,*) 'scw = ', scw(ix,kz,jy)
+           write(0,*) 'scr = ', scr(ix,kz,jy)
+           write(0,*) 'sci = ', sci(ix,kz,jy)
+           write(0,*) 'scs = ', scs(ix,kz,jy)
+           write(0,*) 'sch = ', sch(ix,kz,jy)
+           write(0,*) 'sciona = ', sciona(ix,kz,jy) 
+           IF ( lhl > 1 ) write(0,*) 'schl = ', schl(ix,kz,jy)
+         
+         ENDIF
 
          IF ( present( noninduc ) ) THEN
          IF ( .not. ( noninduc(ix,kz,jy) > -1.e-3 .and. noninduc(ix,kz,jy) < 1.e-3 ) ) THEN
@@ -3314,6 +3331,9 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
            scsmin = Min( scsmin, scs(ix,kz,jy) )
            schmin = Min( schmin, sch(ix,kz,jy) )
            IF ( lhl > 1 ) schlmin= Min(schlmin, schl(ix,kz,jy) )
+
+           sctotmax = Max( sctotmax, sctot(ix,kz,jy) )
+           sctotmin = Min( sctotmin, sctot(ix,kz,jy) )
            
          ENDIF
          ENDIF !}
@@ -3492,8 +3512,10 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
        mpitotindp(10) = -scsmin 
        mpitotindp(11) = -schmin 
        mpitotindp(12) = -schlmin
+       mpitotindp(13) = sctotmax
+       mpitotindp(14) = -sctotmin
 
-      CALL MPI_Reduce(mpitotindp, mpitotoutdp, 16, MPI_DOUBLE_PRECISION, MPI_MAX, 0, local_communicator, mpi_error_code)
+      CALL MPI_Reduce(mpitotindp, mpitotoutdp, 14, MPI_DOUBLE_PRECISION, MPI_MAX, 0, local_communicator, mpi_error_code)
 
        IF ( mytask == 0 ) THEN
        scwmax  = mpitotoutdp(1)  
@@ -3508,6 +3530,10 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
        scsmin  = -mpitotoutdp(10)  
        schmin  = -mpitotoutdp(11)  
        schlmin = -mpitotoutdp(12)  
+       sctotmax = mpitotoutdp(13)
+       sctotmin = -mpitotoutdp(14)
+
+       
        ENDIF
 
 
@@ -3529,6 +3555,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
            write(iunit,'(a,3(2x,1pe13.5))') 'scstot,max,min  = ',scstot, scsmax, scsmin 
            write(iunit,'(a,3(2x,1pe13.5))') 'schtot,max,min  = ',schtot, schmax, schmin 
            write(iunit,'(a,3(2x,1pe13.5))') 'schltot,max,min = ',schltot,schlmax,schlmin
+           write(iunit,'(a,3(2x,1pe13.5))') 'sctot: max,min  = ', sctotmax, sctotmin 
 
 ! write out the integrated charge rates
          IF ( mytask == 0 ) THEN
