@@ -171,7 +171,7 @@
       integer llx,lly,llz,lex,ley,lez
       integer lemag,lpot,lstop,lemag2,lcharge
       integer, parameter :: itest = 0
-      integer, parameter :: ndebug = 1
+      integer, parameter :: ndebug = 2
       integer lgtinit
       integer ieout,ndiscg
       integer ndisic,ndisca
@@ -821,7 +821,7 @@
 
 !      IF ( mytask == 0 ) THEN
 !        write(iunit,90) 'LOCAL IETOTX,IETOTY,IETOTZ=: ',ietotx,ietoty,ietotz
-   90  format(A,3(3I,x))
+!   90  format(A,3(I3,x))
 !      ENDIF
 !
 !  decrease space charge by percentage elgtp1
@@ -1458,7 +1458,8 @@
       DO kz = 2,nz-1
       DO jy = jyb,jye
       DO ix = ixb,ixe
-       IF ( elec(ix,kz,jy,4) >= ebrkd(ix,jy,kz)*elgtfdel ) THEN
+       IF ( elec(ix,kz,jy,4) >= ebrkd(ix,jy,kz)*elgtfdel .and. &
+            temg(ix,kz,jy) < 275.00 ) THEN
        IF ( lightmask(ix,jy) == 0 .and. initmask(ix,jy,kz) == 0 ) THEN
         ninit = ninit + 1
         lightinit(ix,jy) = 1
@@ -1652,6 +1653,7 @@
           mpitotin(2) = elec(i1,k1,j1,3) ! ez
           mpitotin(3) = pot(i1,k1,j1) ! ez
           mpitotin(4) = zlev(k1,i1,j1)
+          mpitotin(5) = temg(i1,k1,j1)
           
 !          write(iunit,*) 'EMAG,k-1,k,k+1: ',elec(iemag)%flt3d(i1,j1,k1-1),elec(iemag)%flt3d(i1,j1,k1),elec(iemag)%flt3d(i1,j1,k1+1)
 !          write(iunit,*) 'EZ,k-1,k,k+1: ',elec(iez)%flt3d(i1,j1,k1-1),elec(iez)%flt3d(i1,j1,k1),elec(iez)%flt3d(i1,j1,k1+1)
@@ -1677,12 +1679,13 @@
        NLzchoose = ichoose_send_buffer(9)
 
 #ifdef MPI
-       CALL MPI_Bcast(mpitotin, 4, MPI_REAL, ichooserank, local_communicator, mpi_error_code)
+       CALL MPI_Bcast(mpitotin, 5, MPI_REAL, ichooserank, local_communicator, mpi_error_code)
 #endif
         emag = mpitotin(1)
         ez = mpitotin(2)
         pot1 = mpitotin(3)
         zinit = mpitotin(4)
+        temp = mpitotin(5)
 
       IF ( my_rank == 0 ) THEN
       write(iunit,'(a,3(1x,i3))') 'Picked starting point ',i1+ioffset,j1+joffset,k1+koffset
@@ -1705,7 +1708,7 @@
       ! write(6,*) 'LIGHTNING INITIATION LOCATION AND |E|'
       write(6,*) 'NSTEP,ILITER = ', nstep,iliter
       write(iunit,*) 'ISLGT, JSLGT, KSLGT : ',islgt,jslgt, kslgt
-      write(iunit,*) 'emag,pot,ez,zc = ',emag,pot1,ez,zinit ! z1d2(kslgt_local,1)
+      write(iunit,*) 'emag,pot,ez,zc,tem = ',emag,pot1,ez,zinit,temp ! z1d2(kslgt_local,1)
     ENDIF
 
 
@@ -1870,12 +1873,12 @@
 !   print if in test mode.
 !
       if ( ndebug >= 2 ) then
-      write(*,*) '==================================================='
-      write(*,*) '==================================================='
-      write(*,*) 'FINDING SCALARS'
-      write(*,*) 'IN=:',in,' FACX,Y,Z:',  facx, facy, facz
-      write(*,*) 'IN=:',in,' IC,JC,KC:',  IC,JC,KC
-      write(*,*)  
+      write(iunit,*) '==================================================='
+      write(iunit,*) '==================================================='
+      write(iunit,*) 'FINDING SCALARS'
+      write(iunit,*) 'IN=:',in,' FACX,Y,Z:',  facx, facy, facz
+      write(iunit,*) 'IN=:',in,' IC,JC,KC:',  IC,JC,KC
+      write(iunit,*)  
       end if
 !
       if ( ic .ge. 1 .and. ic .le. ixe .and.    & 
@@ -1996,25 +1999,25 @@
 !  Print debug stuff
 !
       if ( ndebug .ge. 2 ) then
-      write(*,*) 'TRAJ'
-      write(*,*) 'in, it, times'
-      write(*,*) 'trje(in,it,llx),trje(in,it,lly),trje(in,it,llz)'
-      write(*,*) 'trje(in,it,lex),trje(in,it,ley),trje(in,it,lez)'
-      write(*,*) 'trje(in,it,lpot),trje(in,it,lemag),trje(in,it,lemag2)'
-      write(*,*) 'trje(in,it,lcharge)'
-      write(*,*) 'elec(ic+1,jc,kc,ipot),elec(ic+1,jc+1,kc,ipot)'
-      write(*,*) 'elec(ic+1,jc,kc+1,ipot),elec(ic+1,jc+1,kc+1,ipot)'
-      write(*,*) 'elec(ic,jc,kc,ipot),elec(ic,jc,kc,ipot)'
-      write(*,*) in, it, times
-      write(*,*) trje(in,it,llx),trje(in,it,lly),trje(in,it,llz)
-      write(*,*) trje(in,it,lex),trje(in,it,ley),trje(in,it,lez)
-      write(*,*) trje(in,it,lpot),trje(in,it,lemag),trje(in,it,lemag2)
-      write(*,*) trje(in,it,lcharge)
-      write(*,*) pot(ic+1,kc,jc),pot(ic+1,kc,jc+1)
-      write(*,*) pot(ic+1,kc+1,jc),pot(ic+1,kc+1,jc+1)
-      write(*,*) pot(ic,kc,jc),pot(ic,kc,jc)
-      write(*,*) '==================================================='
-      write(*,*) '==================================================='
+      write(iunit,*) 'TRAJ'
+      write(iunit,*) 'in, it, times'
+      write(iunit,*) 'trje(in,it,llx),trje(in,it,lly),trje(in,it,llz)'
+      write(iunit,*) 'trje(in,it,lex),trje(in,it,ley),trje(in,it,lez)'
+      write(iunit,*) 'trje(in,it,lpot),trje(in,it,lemag),trje(in,it,lemag2)'
+      write(iunit,*) 'trje(in,it,lcharge)'
+      write(iunit,*) 'elec(ic+1,jc,kc,ipot),elec(ic+1,jc+1,kc,ipot)'
+      write(iunit,*) 'elec(ic+1,jc,kc+1,ipot),elec(ic+1,jc+1,kc+1,ipot)'
+      write(iunit,*) 'elec(ic,jc,kc,ipot),elec(ic,jc,kc,ipot)'
+      write(iunit,*) in, it, times
+      write(iunit,*) trje(in,it,llx),trje(in,it,lly),trje(in,it,llz)
+      write(iunit,*) trje(in,it,lex),trje(in,it,ley),trje(in,it,lez)
+      write(iunit,*) trje(in,it,lpot),trje(in,it,lemag),trje(in,it,lemag2)
+      write(iunit,*) trje(in,it,lcharge)
+      write(iunit,*) pot(ic+1,kc,jc),pot(ic+1,kc,jc+1)
+      write(iunit,*) pot(ic+1,kc+1,jc),pot(ic+1,kc+1,jc+1)
+      write(iunit,*) pot(ic,kc,jc),pot(ic,kc,jc)
+      write(iunit,*) '==================================================='
+      write(iunit,*) '==================================================='
       end if
 
       ENDIF
@@ -2096,19 +2099,19 @@
       idxlgt(in,it+1,3) = idxlgt(in,it,3)
 !     
       IF ( ndebug > 1 ) THEN
-      write(*,*) '==================================================='
-      write(*,*) '==================================================='
-      write(*,*) 'TRAJ END'
-      write(*,*) in, it, times
-      write(*,*) trje(in,it,llx),trje(in,it,lly),trje(in,it,llz)
-      write(*,*) trje(in,it,lex),trje(in,it,ley),trje(in,it,lez)
-      write(*,*) trje(in,it,lpot),trje(in,it,lemag),trje(in,it,lemag2)
-      write(*,*) trje(in,it,lcharge)
-      write(*,*) '==================================================='
-      write(*,*) '==================================================='
+      write(iunit,*) '==================================================='
+      write(iunit,*) '==================================================='
+      write(iunit,*) 'TRAJ END'
+      write(iunit,*) in, it, times
+      write(iunit,*) trje(in,it,llx),trje(in,it,lly),trje(in,it,llz)
+      write(iunit,*) trje(in,it,lex),trje(in,it,ley),trje(in,it,lez)
+      write(iunit,*) trje(in,it,lpot),trje(in,it,lemag),trje(in,it,lemag2)
+      write(iunit,*) trje(in,it,lcharge)
+      write(iunit,*) '==================================================='
+      write(iunit,*) '==================================================='
       ENDIF
 !
-      if ( ndebug > 1 .and. my_rank == 0 ) write(*,*) 'nttimend',nttimend(1),nttimend(2)
+      if ( ndebug > 1 .and. my_rank == 0 ) write(iunit,*) 'nttimend',nttimend(1),nttimend(2)
 !
 !  dump lightning x, i coordinates
 !
@@ -2929,12 +2932,12 @@
 !
       if ( icountp .lt. icountth .and. ichend(ichpos) .eq. 2 ) then
       IF ( my_rank == 0 ) THEN
-      write(*,*) 'icountp = ',icountp
+      write(iunit,*) 'icountp = ',icountp
 !      iterst = iterst+1
-      write(*,*) 'RETRY:IRETRY:ICOUNTP:STEP ',iretry,icountp,nstep
+      write(iunit,*) 'RETRY:IRETRY:ICOUNTP:STEP ',iretry,icountp,nstep
 !      iretry = iretry+1
 !      if ( iterst .gt. niter ) then
-      write(*,*) 'Cant find enough points..try a new starting point'
+      write(iunit,*) 'Cant find enough points..try a new starting point'
       ENDIF
 
        sizetest = 0
@@ -3160,12 +3163,12 @@
 !      ENDIF
 
       if ( ndebug .ge. 1 .and. my_rank == 0 ) then
-!      write(*,*) 'scnetni,scnetpi',scnetni,scnetpi 
+!      write(iunit,*) 'scnetni,scnetpi',scnetni,scnetpi 
       end if
 !
 !  accumululate scnet and nscnet
 !
-      if ( ndebug > 2 .and. my_rank == 0 ) write(*,*) 'set scnet,nscnet'
+      if ( ndebug > 2 .and. my_rank == 0 ) write(iunit,*) 'set scnet,nscnet'
 !      volzone = dx*dy*dzz(
       voln = 0. ! icountn ! *volzone
       volp = 0. ! icountp ! *volzone
@@ -4941,7 +4944,7 @@
       write(iunit,*)  nxs1,nxe1
 
       IF ( nzs1 == 1 ) THEN
-       write(*,*) 'got to kz=1? STOP. is,js,ks = ',is,js,ks
+       write(iunit,*) 'got to kz=1? STOP. is,js,ks = ',is,js,ks
 !       STOP
       ENDIF
       end if
