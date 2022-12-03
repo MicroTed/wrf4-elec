@@ -171,7 +171,7 @@
       integer llx,lly,llz,lex,ley,lez
       integer lemag,lpot,lstop,lemag2,lcharge
       integer, parameter :: itest = 0
-      integer, parameter :: ndebug = 2
+      integer, parameter :: ndebug = 1
       integer lgtinit
       integer ieout,ndiscg
       integer ndisic,ndisca
@@ -2179,7 +2179,7 @@
       write(iunit,*) trje(in,it,lex),trje(in,it,ley),trje(in,it,lez)
       write(iunit,*) trje(in,it,lpot),trje(in,it,lemag),trje(in,it,lemag2)
       write(iunit,*) trje(in,it,lcharge),trje(in,it,ltemg)
-      write(iunit,*) 'starting potential = ',trje(in,1,lpot)
+      write(iunit,*) 'starting potential (MV) = ',trje(in,1,lpot)*1.e-6
       
       write(iunit,*) 'zgrnd,ez,pot = ',zgrnd,trje(in,1,lez),trje(in,1,lpot)
         ENDIF
