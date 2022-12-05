@@ -2029,8 +2029,8 @@
           (trje(in,it,llz) .lt. zgrnd .or. (zgrnd < 0. .and. trje(in,it,ltemg) > tgrnd) &
             .or. kc <= 2 ) &
          .and. &
-       ( ( trje(in,1,lez) >  10.e3 .and. trje(in,1,lpot) < -50.e6 ) .or.   &
-         ( trje(in,1,lez) < -10.e3 .and. trje(in,1,lpot) >  50.e6 ) ) ) then
+       ( ( trje(in,1,lez) >  10.e3 .and. trje(in,1,lpot) < -50.e6 .and. trje(in,it,lcharge) > chgmin ) .or.   &
+         ( trje(in,1,lez) < -10.e3 .and. trje(in,1,lpot) >  50.e6 .and. trje(in,it,lcharge) < -chgmin ) ) ) then
       IF ( ifoundic == 0 ) nttimend(in) = it
       nttimendcg(in) = it
       ichend(in) = 1 
@@ -2099,7 +2099,7 @@
       idxlgt(in,it+1,3) = idxlgt(in,it,3)
 !     
       IF ( ndebug > 1 ) THEN
-      write(iunit,*) '==================================================='
+!      write(iunit,*) '==================================================='
       write(iunit,*) '==================================================='
       write(iunit,*) 'TRAJ END'
       write(iunit,*) in, it, times
@@ -2108,7 +2108,7 @@
       write(iunit,*) trje(in,it,lpot),trje(in,it,lemag),trje(in,it,lemag2)
       write(iunit,*) trje(in,it,lcharge)
       write(iunit,*) '==================================================='
-      write(iunit,*) '==================================================='
+!      write(iunit,*) '==================================================='
       ENDIF
 !
       if ( ndebug > 1 .and. my_rank == 0 ) write(iunit,*) 'nttimend',nttimend(1),nttimend(2)
