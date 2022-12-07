@@ -2655,7 +2655,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
           chgneg1 = chgneg1 + Min(0.0, tmp)
           chgpos1 = chgpos1 + Max(0.0, tmp)
 !          chgiona1 = chgiona1 + sciona(ix,kz,jy)*dn(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
-          chgiona1 = chgiona1 + (an(ix,1,kz,lscpi)-an(ix,1,kz,lscni))*ec*dn(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
+          chgiona1 = chgiona1 + (an(ix,1,kz,lscpi)-an(ix,1,kz,lscni))*ec*dx*dy*dz(ix,kz,jy)
 
           
 
@@ -2919,7 +2919,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
           chgneg2 = chgneg2 + Min(0.0, tmp)
           chgpos2 = chgpos2 + Max(0.0, tmp)
 !          chgiona2 = chgiona2 + sciona(ix,kz,jy)*dn(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
-          chgiona2 = chgiona2 + (an(ix,1,kz,lscpi)-an(ix,1,kz,lscni))*ec*dn(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
+          chgiona2 = chgiona2 + (an(ix,1,kz,lscpi)-an(ix,1,kz,lscni))*ec*dx*dy*dz(ix,kz,jy)
         ENDDO
        ENDDO
       ENDIF
