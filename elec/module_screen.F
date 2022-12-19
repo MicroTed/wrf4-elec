@@ -472,7 +472,7 @@
 !  x-direction
 !
       IF ( iscreen == 1 .and. ix >= 1 .and. ix <= nx .and. (ix .gt. 3 .or. id1 == 0  ) .and. &
-           ( ix .lt. nx-3*istag .or. id2 == 0 .and. ix  ) ) THEN
+           ( ix .lt. nx-3*istag .or. id2 == 0 ) ) THEN
 
        if ( t0(ix+istag,jy,kz) .lt. qctol .and.     &
           t0(ix+istag+1,jy,kz) .lt. qctol2 .and.   &
@@ -538,7 +538,8 @@
 !
 !  y-direction
 !
-      IF ( iscreen == 1 .and. jy >= 1 .and. jy <= ny .and. ( jy .gt. 3 .or. jd1 == 0 ) .and. ( jy .lt. ny-3*jstag .or. jd2 == 0 ) ) THEN
+      IF ( iscreen == 1 .and. jy >= 1 .and. jy <= ny .and. ( jy .gt. 3 .or. jd1 == 0 ) &
+            .and. ( jy .lt. ny-3*jstag .or. jd2 == 0 ) ) THEN
 
         if ( t0(ix,jy+jstag,kz) .lt. qctol .and.    &
           t0(ix,jy+jstag+1,kz) .lt. qctol2 .and.   &
