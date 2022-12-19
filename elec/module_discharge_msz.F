@@ -4563,8 +4563,8 @@
              flshfedicn(ix,jy) = flshfedicn(ix,jy) + ineg
            ELSE
              flshfedcg(ix,jy) = flshfedcg(ix,jy) + 1
-             flshfedcgp(ix,jy) = flshfedcgp(ix,jy) + ipos
-             flshfedcgn(ix,jy) = flshfedcgn(ix,jy) + ineg
+             flshfedcgp(ix,jy) = flshfedcgp(ix,jy) + ineg ! positive CG footprint is where negative charge is deposited
+             flshfedcgn(ix,jy) = flshfedcgn(ix,jy) + ipos ! opposite for neg CG
            ENDIF
            
            IF ( kcldtop(ix,jy) > 1 ) THEN
