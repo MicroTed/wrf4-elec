@@ -1,8 +1,11 @@
 #!/usr/bin/perl
 # a perl program to read in a flash summary file and report the
-#   ICs and CGs in time bins of whatever width. (set to 1 minute bins)
+#   ICs and CGs in time bins of whatever width. (hardwired value of intervalm, below,
+#   normally set to 1 or 60 minute bins, but can be any integer value)
 #
-# 12/10/04: look for warning that a flash violated energy reduction and remove it.
+# Usage:
+#  binwrf.pl rsl.out.0000
+#  binwrf.pl rsl.out.0000 > output.txt
 #
 # Looks for the lines:
 # $infile = 
@@ -27,11 +30,11 @@ $lf = chr(10);  # newline character for Unix
 # foreach ...
 foreach $file (@ARGV) {
     $intervalminv = 1;
-    $intervalm = 60 ; # 1/$intervalminv;   # time discretization (usually 1 minute)
-#    $intervalm = 1 ; # 1/$intervalminv;   # time discretization (usually 1 minute)
+#    $intervalm = 60 ; # 1/$intervalminv;   # time discretization (usually 1 minute)
+    $intervalm = 1 ; # 1/$intervalminv;   # time discretization (usually 1 minute)
     $intervals = $intervalm*60;  
     print ("time binning: intervalm = $intervalm minutes\n");
-    $dxdy = 1000*1000;
+    $dxdy = 1 # set to dx*dy of WRF if needed, e.g., $dxdy = 1000*1000;
     $istop = 0;
     $binshift = 0;
     $tries = 0;
