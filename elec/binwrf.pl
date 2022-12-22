@@ -34,7 +34,7 @@ foreach $file (@ARGV) {
     $intervalm = 1 ; # 1/$intervalminv;   # time discretization (usually 1 minute)
     $intervals = $intervalm*60;  
     print ("time binning: intervalm = $intervalm minutes\n");
-    $dxdy = 1 # set to dx*dy of WRF if needed, e.g., $dxdy = 1000*1000;
+    $dxdy = 1; # set to dx*dy of WRF if needed, e.g., $dxdy = 1000*1000;
     $istop = 0;
     $binshift = 0;
     $tries = 0;
