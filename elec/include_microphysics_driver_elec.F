@@ -6,6 +6,8 @@
 !     jts = jps
 !     jte = jpe
      
+        flashtype = 'Time Step'
+
      if (ipelectmp.gt.0)  then ! 
 
      elec(:,:,:,:)=0.
@@ -47,10 +49,10 @@
 
        IF (channel) THEN
          its = max(i_start(1),ids)
-         ite = min(i_end(1),ide-1)
+         ite = min(i_end(num_tiles),ide-1)
        ELSE
          its = ips ! max(i_start(1),ids+sz)
-         ite = min(i_end(1),ide-1-sz)
+         ite = min(i_end(num_tiles),ide-1-sz)
          IF ( ime > ide ) ite = ide - 1 
        ENDIF
        jts = jps ! max(j_start(1),jds+sz)
@@ -276,6 +278,37 @@
      &               NLxdg, NLydg, NLzdg, NGxdg, NGydg, NGzdg,   &
      &               iGsdg, jGsdg, kGsdg,dx, dy, dz8w(its-1:ite+1,kts:kte,jts-1:jte+1) )
 
+         energynew = 0.0d0
+         
+         DO j = jts,jte
+         DO k = kts,kte-1
+         DO i = its,ite 
+             energynew = energynew + 0.5*pot(i,k,j)*sctot(i,k,j)*dz8w(i,k,j)*dx*dy
+         ENDDO
+         ENDDO
+         ENDDO
+         
+#if ( defined(DM_PARALLEL)  &&   ! defined(STUBMPI) )
+         energynew = wrf_dm_sum_real8(energynew)
+#endif
+
+       IF ( wrf_dm_on_monitor() ) THEN
+        IF ( energyold .gt. 0.0 ) THEN
+          energychange = 100.0*(energynew - energyold)/energyold
+        ELSE
+          energychange = 0.0
+        ENDIF
+       write(6,'(a,3(1x,1pe13.5),1x,0pf7.2,a)')   &
+     &       'Energy info: old,new,difference: ',     &
+     &                 energyold, energynew, energynew - energyold,energychange,' %'
+       
+        IF ( one_flash_at_a_time ) THEN
+         write(6,'(a,a,1pe13.5)') trim(flashtype),' energy: ',energynew - energyold
+        ENDIF
+       ENDIF
+
+         energyold = energynew
+
 
 !      relax top elec field to ezfair
 !     recompute elecmag for 4 top points (without weighted average)
@@ -384,14 +417,6 @@
       &   ims0,ime0,jms0,jme0,kms,kme,temg     &
       &  ,dx,dy,lightradtmp,ecrittmp,disfrac,dz8w(its-1:ite+1,kts:kte,jts-1:jte+1),sctot(its-1:ite+1,kts:kte,jts-1:jte+1) &
       &  ,pot(its-1:ite+1,kts:kte,jts-1:jte+1) &
-!      &  ,scw(its-1:ite+1,kts:kte,jts-1:jte+1),scs(its-1:ite+1,kts:kte,jts-1:jte+1),sci(its-1:ite+1,kts:kte,jts-1:jte+1)  &
-!      &  ,scr(its-1:ite+1,kts:kte,jts-1:jte+1),sch(its-1:ite+1,kts:kte,jts-1:jte+1),schl(its-1:ite+1,kts:kte,jts-1:jte+1) &
-!      &  ,qc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qs_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
-!      &  ,qi_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
-!      &  ,qg_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qh_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                               &
-!      &  ,qnc_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qns_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
-!      &  ,qni_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qnr_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
-!      &  ,qng_curr(its-1:ite+1,kts:kte,jts-1:jte+1),qnh_curr(its-1:ite+1,kts:kte,jts-1:jte+1)                             &
       &  ,elec(its-1:ite+1,kts:kte,jts-1:jte+1,1:4) & ! ,scion(its-1:ite+1,kts:kte,jts-1:jte+1,1:2)                            & ! could also pass elecmag...
       &  ,sciona(its-1:ite+1,kts:kte,jts-1:jte+1)                                                                         &
       &  ,nbw,nbe,nbs,nbn ,nbw0,nbe0,nbs0,nbn0                                                                                                 &
@@ -453,17 +478,21 @@
 
        
         cnoxall = cnoxall + cnoxtot
+        flashtype = 'No Flash'
         IF ( loccur == 1 ) THEN
            numic = numic + 1
            cnoxic = cnoxic + cnoxtot
+           flashtype = 'IC flash'
         ENDIF
         IF ( loccur == 2 ) THEN
            numcgn = numcgn + 1
            cnoxcg = cnoxcg + cnoxtot
+           flashtype = 'Neg. CG flash'
         ENDIF
         IF ( loccur == 3 ) THEN
            numcgp = numcgp + 1
            cnoxcg = cnoxcg + cnoxtot
+           flashtype = 'Pos. CG flash'
         ENDIF
          
         count = count + 1
@@ -480,7 +509,9 @@
        ENDIF
        
        ! temporary hack to force one flash per iter
-       ! inittot = 0
+       IF ( one_flash_at_a_time ) THEN
+         inittot = 0
+       ENDIF
        
 
         IF ( count >= maxiter ) EXIT
@@ -506,12 +537,14 @@
        do k=kts,kte
        do i=its-1,ite+1
        do j=jts-1,jte+1
-       scw(i,k,j)=0.95*scw(i,k,j)
-       scr(i,k,j)=0.95*scr(i,k,j)
-       sch(i,k,j)=0.95*sch(i,k,j)
-       sci(i,k,j)=0.95*sci(i,k,j)
-       scs(i,k,j)=0.95*scs(i,k,j)
-       if (f_schl) schl(i,k,j)=0.95*schl(i,k,j)
+!       scw(i,k,j)=0.95*scw(i,k,j)
+!       scr(i,k,j)=0.95*scr(i,k,j)
+!       sch(i,k,j)=0.95*sch(i,k,j)
+!       sci(i,k,j)=0.95*sci(i,k,j)
+!       scs(i,k,j)=0.95*scs(i,k,j)
+!       if (f_schl) schl(i,k,j)=0.95*schl(i,k,j)
+        sciona(i,k,j) = sciona(i,k,j) - 0.05*sctot(i,k,j)
+        sctot(i,k,j)  = sctot(i,k,j)  - 0.05*sctot(i,k,j)
        enddo
        enddo
        enddo

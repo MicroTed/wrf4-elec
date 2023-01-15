@@ -211,7 +211,7 @@ SUBROUTINE microphysics_driver(                                          &
 
 #ifdef DM_PARALLEL
   USE module_dm, ONLY : &
-                 local_communicator, mytask,  wrf_dm_min_real, wrf_dm_max_real
+                 local_communicator, mytask,  wrf_dm_min_real, wrf_dm_max_real, wrf_dm_sum_real8
 #endif
 
 #ifdef WRF_ELEC 
@@ -867,8 +867,15 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 #ifdef WRF_ELEC
 ! Explicit lightning
    integer l,iter,lgtstp,loccur,nxdg,nydg,nzdg
+   character*40 :: flashtype
    integer, save :: numic,numcgp,numcgn
    double precision, save :: cnoxtot,cnoxall,cnoxic,cnoxcg
+   double precision, save :: energynew = -1.d0, energyold = -1.d0
+   logical, save :: one_flash_at_a_time = .true. ! Used for MSZ lightning: use 'true' to get energy of each flash,
+                                                 ! but set to 'false' if energy not needed to decrease computation
+                                                 ! 'false' allows multiple non-overlapping flashes to be run before
+                                                 ! recomputing the electric potential
+   real    :: energychange
    integer :: inittot, inittot2, flashcount, count, init, init2, maskcount, maskcounttot
    logical :: irelax = .false.
    integer :: maxiter = 120
@@ -931,6 +938,34 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
       CALL wrf_message ( wrf_err_message )
       ENDIF
    ENDIF
+
+#if ( WRF_ELEC >= 1 )
+      IF ( energyold < 0.0 .and. ipelectmp > 0 ) THEN
+
+        its = max(ips,ids+sz)
+        ite = min(ipe,ide-1-sz)
+        jts = max(jps,jds+sz)
+        jte = min(jpe,jde-1-sz)
+       
+         energyold = 0.0d0
+         
+         DO j = jts,jte
+         DO k = kts,kte-1
+         DO i = its,ite 
+             energyold = energyold + 0.5*pot(i,k,j)*sctot(i,k,j)*dz8w(i,k,j)*dx*dy
+         ENDDO
+         ENDDO
+         ENDDO
+         
+#if ( defined(DM_PARALLEL)  &&   ! defined(STUBMPI) )
+         energyold = wrf_dm_sum_real8(energyold)
+#endif
+         energynew = energyold
+         
+         
+      
+      ENDIF
+#endif
 
 #ifdef XEON_OPTIMIZED_WSM5
    ! the OpenMP loops are inside the scheme when running on MIC
@@ -2487,7 +2522,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      SR=SR,                              &
                      diagflag = diagflag,                &
                      ke_diag = ke_diag,                  &
-                     ipelectmp = ipelectmp,                &
+                     ipelectmp = ipelectmp,              &
                      dbz      = refl_10cm,               &
                      nssl_progn=nssl_progn,              &
                      cu_used=cu_used,                    &
