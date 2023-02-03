@@ -4590,7 +4590,7 @@
 #endif
        
        IF ( my_rank == 0 ) THEN
-         write(6,*) 'Avg. cloud top, area ',zcldtoptot/ncldtop*1.e-3, ncldtop*dx*dy*1.e-3**2
+         write(6,*) 'Avg. cloud top, area ',zcldtoptot/Max(1,ncldtop)*1.e-3, ncldtop*dx*dy*1.e-3**2
        ENDIF
        
        lightsuccess = 1
