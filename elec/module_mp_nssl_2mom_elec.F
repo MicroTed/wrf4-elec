@@ -2968,7 +2968,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
             induc(ix,kz,jy)  = t5(ix,1,kz)
           ENDIF
           
-          tmp = t2(ix,1,kz) + t3(ix,1,kz) + t6(ix,1,kz) + t8(ix,1,kz)
+          tmp = t1(ix,1,kz) + t2(ix,1,kz) + t3(ix,1,kz) + t6(ix,1,kz) + t8(ix,1,kz)
           
           IF ( present( noninduc ) ) THEN
              noninduc(ix,kz,jy) = tmp

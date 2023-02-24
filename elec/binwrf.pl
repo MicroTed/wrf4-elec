@@ -1,8 +1,11 @@
 #!/usr/bin/perl
 # a perl program to read in a flash summary file and report the
-#   ICs and CGs in time bins of whatever width. (set to 1 minute bins)
+#   ICs and CGs in time bins of whatever width. (hardwired value of intervalm, below,
+#   normally set to 1 or 60 minute bins, but can be any integer value)
 #
-# 12/10/04: look for warning that a flash violated energy reduction and remove it.
+# Usage:
+#  binwrf.pl rsl.out.0000
+#  binwrf.pl rsl.out.0000 > output.txt
 #
 # Looks for the lines:
 # $infile = 
@@ -25,13 +28,12 @@ $lf = chr(10);  # newline character for Unix
 #    print OUT ("$next \n");
 #    }
 # foreach ...
-foreach $file (@ARGV) {
     $intervalminv = 1;
-    $intervalm = 60 ; # 1/$intervalminv;   # time discretization (usually 1 minute)
-#    $intervalm = 1 ; # 1/$intervalminv;   # time discretization (usually 1 minute)
+#    $intervalm = 60 ; # 1/$intervalminv;   # time discretization (usually 1 minute)
+    $intervalm = 1 ; # 1/$intervalminv;   # time discretization (usually 1 minute)
     $intervals = $intervalm*60;  
-    print ("time binning: intervalm = $intervalm minutes\n");
-    $dxdy = 1000*1000;
+#    print ("intervalminv,intervalm,intervals = $intervalminv, $intervalm, $intervals\n");
+    $dxdy = 1; #1000*1000;
     $istop = 0;
     $binshift = 0;
     $tries = 0;
@@ -91,6 +93,9 @@ foreach $file (@ARGV) {
     $hlmass = 0;
     $wvol5 = 0;
     $wvol10 = 0;
+    $filecount = 0;
+
+foreach $file (@ARGV) {
 
     open INPUT, "<$file";
     $start = 0;
@@ -634,6 +639,8 @@ foreach $file (@ARGV) {
      }    
      } # if ( $nstep < $nstop - 1)  
     } # while
+   } # foreach
+
   foo: 
    
     if ( $icx > 0 || $cgpx > 0 || $cgnx > 0 ) {}
@@ -688,7 +695,6 @@ foreach $file (@ARGV) {
 #    print OUT ( $i+$binshift+1,"  $ic[$i]  $cgp[$i]  $cgn[$i] ", 
 #      "$tries[$i] $icdis[$i] $iccharge[$i] $cgcharge[$i]\n" );
     }
-   } # foreach
 
     sub Max {
         my ($max,$tem);
