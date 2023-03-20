@@ -1837,10 +1837,17 @@
       z1d2(1:nz,4) = dzz(ic,1:nz,jc)
 !      kc = find_indexlgt(trje(in,it,llz),zlev(1:nz,ic,jc),nz)
       kc = find_indexlgt(trje(in,it,llz),z1d2(1,1),nz)
+      
 
       if ( ndebug > 2 ) THEN
         write(0,*) 'ic, jc, kc =',ic,jc,kc,iep,je
         write(0,*) 'trje(llz),z1d2(1) = ',trje(in,it,llz),z1d2(1,1)
+      ENDIF
+      
+      IF ( kc < 1 ) THEN
+        write(0,*) 'error: kc < 1: kc,trje(llz),z1d2(1,1) = ',kc,trje(in,it,llz),z1d2(1,1)
+        trje(in,it,llz) = z1d2(1,1)
+        kc = 1
       ENDIF
 
 !      z1d2(1,1) = zlev(1,ic,jc)
@@ -1992,7 +1999,7 @@
       ENDIF
 
       IF ( it >= 1 ) THEN  
-        trje(in,it+1,llz) = trje(in,it,llz) + dtelec(in) * trje(in,it,lez)
+        trje(in,it+1,llz) = Max( z1d2(1,1), trje(in,it,llz) + dtelec(in) * trje(in,it,lez))
      
      IF ( it == 1 .and. dtelec(in) * trje(in,it,lez) < 0.0 ) idownward = 1
 !
