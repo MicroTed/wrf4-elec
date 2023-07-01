@@ -950,10 +950,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
       wmax = wrf_dm_max_real ( wmax )
       wmin = wrf_dm_min_real ( wmin )
 #endif
-      IF ( wrf_dm_on_monitor() ) THEN
       WRITE( wrf_err_message , * ) 'microphysics_driver: GLOBAL w max/min = ', wmax, wmin
       CALL wrf_message ( wrf_err_message )
-      ENDIF
    ENDIF
 
 #if ( WRF_ELEC >= 1 )
@@ -2638,7 +2636,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      QH=qg_curr,                         &
                      QHL=qh_curr,                        &
                      cn=qnn_curr,                        &
-                     CCW=qndrop_curr,                       &
+                     CCW=qndrop_curr,                    &
                      CRW=qnr_curr,                       &
                      CCI=qni_curr,                       &
                      CSW=qns_curr,                       &

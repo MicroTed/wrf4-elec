@@ -645,12 +645,9 @@ while ( <CONFIGURE_DEFAULTS> )
     $_ =~ s/CONFIGURE_PERL_PATH/$sw_perl_path/g ;
     $_ =~ s/CONFIGURE_NETCDF_PATH/$sw_netcdf_path/g ;
     $_ =~ s/CONFIGURE_PNETCDF_PATH/$sw_pnetcdf_path/g ;
-<<<<<<< HEAD
     $_ =~ s/CONFIGURE_BOXMG_PATH/$sw_boxmg_path/g ;
-=======
     $_ =~ s/CONFIGURE_NETCDFPAR_PATH/$sw_netcdfpar_path/g ;
     $_ =~ s/CONFIGURE_ADIOS2_PATH/$sw_adios2_path/g ;
->>>>>>> upstream/release-v4.5.1
     $_ =~ s/CONFIGURE_HDF5_PATH/$sw_hdf5_path/g ;
     $_ =~ s/CONFIGURE_PHDF5_PATH/$sw_phdf5_path/g ;
     $_ =~ s/CONFIGURE_LDFLAGS/$sw_ldflags/g ;
@@ -1145,7 +1142,6 @@ while ( <ARCH_PREAMBLE> )
 	$_ =~ s:CONFIGURE_PNETCDF_LIB_PATH::g ;
 	 }
 
-<<<<<<< HEAD
     if ( $sw_boxmg_path ) 
       {    #   printf "set CONFIGURE_BOXMG_LIB_PATH sw_boxmg_path=$sw_boxmg_path\n";
 #         printf "set boxmg in $_ \n";
@@ -1158,7 +1154,6 @@ while ( <ARCH_PREAMBLE> )
           $_ =~ s:BOXMGINCPATH::g ;
 	 }
 
-=======
     if ( $sw_adios2_path ) 
       { $_ =~ s/CONFIGURE_WRFIO_ADIOS2/wrfio_adios2/g ; 
         $_ =~ s:CONFIGURE_ADIOS2_FLAG:-DADIOS2: ;
@@ -1181,7 +1176,6 @@ while ( <ARCH_PREAMBLE> )
 	      $_ =~ s:CONFIGURE_ADIOS2_FLAG::g ;
 	      $_ =~ s:CONFIGURE_ADIOS2_LIB_PATH::g ;
       }
->>>>>>> upstream/release-v4.5.1
 
     if ( $sw_hdf5_path )
       { $_ =~ s:CONFIGURE_HDF5_LIB_PATH:-L$sw_hdf5_path/lib -lhdf5hl_fortran -lhdf5_hl -lhdf5_fortran -lhdf5 -lm -lz: ;
