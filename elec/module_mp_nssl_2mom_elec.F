@@ -19385,19 +19385,19 @@ END SUBROUTINE nssl_2mom_driver
 
       scsacw(:) = 0.0
       scsaci(:) = 0.0
-      IF ( lis > 1 ) scsacis(:) = 0.0
+      scsacis(:) = 0.0
       scsacr(:) = 0.0
 
       schacw(:) = 0.0
       schaci(:) = 0.0
-      IF ( lis > 1 ) schacis(:) = 0.0
+      schacis(:) = 0.0
       schacs(:) = 0.0
       schacr(:) = 0.0
 
 !      IF ( lhl .gt. 1 ) THEN
       schlacw(:) = 0.0
       schlaci(:) = 0.0
-      IF ( lis > 1 ) schlacis(:) = 0.0
+      schlacis(:) = 0.0
       schlacs(:) = 0.0
       schlacr(:) = 0.0
 !      ENDIF
@@ -25266,7 +25266,8 @@ END SUBROUTINE nssl_2mom_driver
       DO mgs = 1,ngscnt
         t1(igs(mgs),jy,kgs(mgs)) = scsaci(mgs)
         t2(igs(mgs),jy,kgs(mgs)) = schacs(mgs)
-        t3(igs(mgs),jy,kgs(mgs)) = schaci(mgs) + schacis(mgs)
+        t3(igs(mgs),jy,kgs(mgs)) = schaci(mgs) 
+        IF ( lis > 1 ) t3(igs(mgs),jy,kgs(mgs)) = t3(igs(mgs),jy,kgs(mgs)) + schacis(mgs)
         IF ( lf > 1 ) t3(igs(mgs),jy,kgs(mgs)) =  t3(igs(mgs),jy,kgs(mgs)) + scfaci(mgs) + scfacis(mgs)
         IF ( lf > 1 ) t2(igs(mgs),jy,kgs(mgs)) = t2(igs(mgs),jy,kgs(mgs)) + scfacs(mgs)
         t4(igs(mgs),jy,kgs(mgs)) = scsacw(mgs)
