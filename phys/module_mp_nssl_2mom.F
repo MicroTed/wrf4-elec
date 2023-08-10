@@ -3075,13 +3075,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
             IF ( lccna > 1 .and. .not. ( present( cna ) .and. f_cnatmp ) ) THEN
               cn(ix,kz,jy) = Max(0.0, an(ix,1,kz,lccna) )
             ELSE
-!    If there is a cna array, then cn should be left as a background value, anyway
-!            IF ( i_uf_or_ccn > 0 .and. lccnuf > 1 ) THEN ! UF ccn are extra regular ccn
-!              ! subtract cnuf back of since lccn is background value
-!              an(ix,1,kz,lccn) = an(ix,1,kz,lccn) - cnuf(ix,kz,jy) ! an(ix,1,kz,lccnuf)
-!            ENDIF
-!             
-!             cn(ix,kz,jy) = an(ix,1,kz,lccn)
+             cn(ix,kz,jy) = an(ix,1,kz,lccn)
             ENDIF
          ENDIF
          IF ( lccna > 1 ) THEN
