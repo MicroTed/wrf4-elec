@@ -3425,7 +3425,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
 !              an(ix,1,kz,lccn) = an(ix,1,kz,lccn) - cnuf(ix,kz,jy) ! an(ix,1,kz,lccnuf)
 !            ENDIF
 !             
-!             cn(ix,kz,jy) = an(ix,1,kz,lccn)
+             cn(ix,kz,jy) = an(ix,1,kz,lccn)
             ENDIF
          ENDIF
          IF ( lccna > 1 ) THEN
