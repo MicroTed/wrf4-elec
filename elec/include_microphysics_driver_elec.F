@@ -15,7 +15,9 @@
 
 !    add up flashes up to history dump 
 
-     if (MOD(NINT(curr_secs),history_interval*60).eq.0) then
+!     if (MOD(NINT(curr_secs),history_interval*60).eq.0) then
+      IF ( clear_history ) THEN
+        clear_history = .false.
 !      write(0,*) 'clear arrays'
       light(:,:) = 0.
       lightdis(:,:) = 0.
@@ -40,6 +42,11 @@
          write(0,*) 'CANNOT RUN WITH num_tiles > 1 !'
          STOP
        ENDIF
+
+     ! this sets the clear flag for the next time step if a history dump is occurring now
+     IF ( diag_flag_hist ) THEN
+       clear_history = .true.
+     ENDIF
 
   93  format(A,9(I3,2x))
 

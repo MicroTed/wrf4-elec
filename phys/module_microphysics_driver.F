@@ -151,6 +151,7 @@ SUBROUTINE microphysics_driver(                                          &
 ! Added the RI_CURR array to the call
                       ,ri_curr                                           &
                       ,diagflag,   do_radar_ref                          &
+                      ,diag_flag_hist                                    &
                       ,ke_diag                                           &
                       ,re_cloud, re_ice, re_snow                         & ! G. Thompson
                       ,has_reqc, has_reqi, has_reqs                      & ! G. Thompson
@@ -821,7 +822,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 ! End explicit lightning
 
 
-   LOGICAL, OPTIONAL, INTENT(IN) :: diagflag
+   LOGICAL, OPTIONAL, INTENT(IN) :: diagflag, diag_flag_hist
    INTEGER, OPTIONAL, INTENT(IN) :: ke_diag ! tells reflectivity calculation whether to do full depth or only k=1
    REAL, INTENT(IN) :: ccn_conc ! RAS
    INTEGER, OPTIONAL, INTENT(IN) :: do_radar_ref
@@ -923,6 +924,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    double precision, parameter :: efb1 = 0.50, efb2 = 0.65, efb3 = 0.10
    integer :: ng =3
    integer :: ngx1,ngx2,ngy1,ngy2
+   logical, save :: clear_history = .true.
 ! End explicit lightning
 #endif
 
