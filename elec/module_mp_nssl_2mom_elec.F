@@ -10544,10 +10544,11 @@ END SUBROUTINE nssl_2mom_driver
       
       ftrar = 0.0
       
+      rar = 0.0
       IF ( qcw > 0.0 ) THEN
         rar = exw*qcw*1.0e3*rho0*vt*Abs(rarfac)
-      ELSE
-        rar = 1.0 ! 1.5*rar0
+!      ELSE
+!        rar = 1.0 ! 1.5*rar0
       ENDIF
       t = temcg
 
@@ -14678,7 +14679,6 @@ END SUBROUTINE nssl_2mom_driver
       real  pscrwi(ngs), pscrwd(ngs)  ! rain water
       real  pscswi(ngs), pscswd(ngs)  ! snow
       real  pschwi(ngs), pschwd(ngs)  ! graupel
-      real  pscfwi(ngs), pscfwd(ngs)  ! frozen drops
       real  pschli(ngs), pschld(ngs)   ! hail
 
 !ions assume mass = 0
@@ -14695,7 +14695,6 @@ END SUBROUTINE nssl_2mom_driver
       real  pscrwmi(ngs), pscrwmd(ngs)
       real  pscswmi(ngs), pscswmd(ngs)
       real  pschwmi(ngs), pschwmd(ngs)
-      real  pscfwmi(ngs), pscfwmd(ngs)
       real  pschlmi(ngs), pschlmd(ngs)
 
 
@@ -23946,7 +23945,6 @@ END SUBROUTINE nssl_2mom_driver
         write(0,*)  pscswi(mgs), pscswd(mgs)
         write(0,*)  pschwi(mgs), pschwd(mgs)
         write(0,*)  pschli(mgs), pschld(mgs)
-        write(0,*) 'FD: ',pscfwi(mgs), pscfwd(mgs)
         write(0,*)  pscpii(mgs) ,pscpid(mgs)
         write(0,*)  pscnii(mgs) ,pscnid(mgs)
         write(0,*)
@@ -23955,7 +23953,6 @@ END SUBROUTINE nssl_2mom_driver
         write(0,*)  pscrwmi(mgs), pscrwmd(mgs)
         write(0,*)  pscswmi(mgs), pscswmd(mgs), pscswmd(mgs) - fscsw2(mgs)*qsshr(mgs)
         write(0,*)  pschwmi(mgs), pschwmd(mgs)
-        write(0,*) 'FD: ',pscfwmi(mgs), pscfwmd(mgs)
         write(0,*)  pschlmi(mgs), pschlmd(mgs)
 
      write(0,*)  'pscswmd(mgs)'
@@ -24445,11 +24442,6 @@ END SUBROUTINE nssl_2mom_driver
       end do
       end if
 
-!
-!  Frozen drops
-!
-      pscfwi(:) = 0.0
-      pscfwd(:) = 0.0
 
 !
 !  Hail
@@ -24545,7 +24537,6 @@ END SUBROUTINE nssl_2mom_driver
      &              pscswi(mgs) +pscswd(mgs) +   &
      &              pschwi(mgs) +pschwd(mgs) +       &
      &              pschli(mgs) +pschld(mgs) +       &
-     &              pscfwi(mgs) +pscfwd(mgs) +       &
      &              pscpii(mgs) +pscpid(mgs) +       &
      &              pscnii(mgs) +pscnid(mgs) +       &
      &              pscplii(mgs) +pscplid(mgs) +       &
@@ -24556,7 +24547,6 @@ END SUBROUTINE nssl_2mom_driver
      &              pscrwmi(mgs) +pscrwmd(mgs) +   &
      &              pscswmi(mgs) +pscswmd(mgs) +   &
      &              pschwmi(mgs) +pschwmd(mgs) +     &
-     &              pscfwmi(mgs) +pscfwmd(mgs) +     &
      &              pschlmi(mgs) +pschlmd(mgs)
       IF ( .not. ( psctot(mgs) .gt. -1. .and. psctot(mgs) .lt. 1.0 ) .or.    &
      &      Abs( psctot(mgs) ) .gt. esctot .or. Abs(pschwmi(mgs)) > 0.1 )  THEN
@@ -24570,7 +24560,6 @@ END SUBROUTINE nssl_2mom_driver
         write(0,*)  pscrwi(mgs), pscrwd(mgs)
         write(0,*)  pscswi(mgs), pscswd(mgs)
         write(0,*)  pschwi(mgs), pschwd(mgs)
-        write(0,*)  pscfwi(mgs), pscfwd(mgs)
         write(0,*)  pschli(mgs), pschld(mgs)
         write(0,*)  pscpii(mgs) ,pscpid(mgs)
         write(0,*)  pscnii(mgs) ,pscnid(mgs)
@@ -24580,7 +24569,6 @@ END SUBROUTINE nssl_2mom_driver
         write(0,*)  pscrwmi(mgs), pscrwmd(mgs)
         write(0,*)  pscswmi(mgs), pscswmd(mgs)
         write(0,*)  pschwmi(mgs), pschwmd(mgs)
-        write(0,*)  pscfwmi(mgs), pscfwmd(mgs)
         write(0,*)  pschlmi(mgs), pschlmd(mgs)
 
       write(0,*) 'Problem with psctot,pschwmi: ',mgs,psctot(mgs),pschwmi(mgs)
