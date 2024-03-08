@@ -17584,25 +17584,6 @@ END SUBROUTINE nssl_2mom_driver
       ENDIF
       end do   
 
-
-      IF ( lis > 1 .and. ipconc >= 5 ) THEN
-      do mgs = 1,ngscnt
-      qhacis(mgs) = 0.0
-      qhacis0(mgs) = 0.0
-      IF ( ehis(mgs) .gt. 0.0 ) THEN
-
-       vt = Sqrt((vtxbar(mgs,lh,1)-vtxbar(mgs,lis,1))**2 +    &
-     &            0.04*vtxbar(mgs,lh,1)*vtxbar(mgs,lis,1) )
-
-          qhacis0(mgs) = 0.25*pi*ehisclsn(mgs)*cx(mgs,lh)*qx(mgs,lis)*vt*   &
-     &         (  da0lh(mgs)*xdia(mgs,lh,3)**2 +     &
-     &            dab1lh(mgs,lh,lis)*xdia(mgs,lh,3)*xdia(mgs,lis,3) +    &
-     &            da1(li)*xdia(mgs,lis,3)**2 ) 
-          qhacis(mgs) = Min( ehis(mgs)*qhacis0(mgs), qxmxd(mgs,lis) )
-      ENDIF
-      end do
-      ENDIF
-
 !
 !
       do mgs = 1,ngscnt
@@ -23861,10 +23842,7 @@ END SUBROUTINE nssl_2mom_driver
 !     &  +fschw(mgs)*qhmul1(mgs)   &
 !     &  +fschl(mgs)*qhlmul1(mgs)  &
 !     &  +fscsw(mgs)*qsmul(mgs)
-      pscismd(mgs) =  0.0   &
-!     &   il5(mgs)*(-fscci(mgs)*qscni(mgs)   & ! -fscci(mgs)*qwaci(mgs)   &
-!     &  -fscci(mgs)*qsacis(mgs)) & ! -fscci(mgs)*qraci(mgs)   &
-     &  -fscis(mgs)*qhacis(mgs) -fscis(mgs)*qhlacis(mgs)
+      pscismd(mgs) =  0.0   
       end do
       end if
       ENDIF
@@ -23987,8 +23965,7 @@ END SUBROUTINE nssl_2mom_driver
      &  +il5(mgs)*(ifiacrg*ffrzh*(fscci(mgs)*qracif(mgs)+fscrw(mgs)*qiacrf(mgs))   &
      &  +fscrw(mgs)*ifrzg*ffrzh*qrfrzf(mgs))   &
      &  +fscrw(mgs)*qhacr(mgs)+fsccw(mgs)*qhacw(mgs)   &
-     &  +fscsw(mgs)*qhacs(mgs)+fscci(mgs)*qhaci(mgs)   &
-     &  +fscis(mgs)*qhacis(mgs) 
+     &  +fscsw(mgs)*qhacs(mgs)+fscci(mgs)*qhaci(mgs)
       pschwmd(mgs) =    &
      &  - fschw(mgs)*qhlcnh(mgs)   &
 !     &  + fschw(mgs)*qhshr(mgs)    &
@@ -24024,8 +24001,7 @@ END SUBROUTINE nssl_2mom_driver
      &  +fscrw(mgs)*(1.0-ifrzg)*qrfrzf(mgs))   &
      &  +fscrw(mgs)*qhlacr(mgs)+fsccw(mgs)*qhlacw(mgs)   &
      &  +fscsw(mgs)*qhlacs(mgs)+fscci(mgs)*qhlaci(mgs)   &
-     &  + fschw(mgs)*qhlcnh(mgs) &
-     &  + fscis(mgs)*qhlacis(mgs)
+     &  + fschw(mgs)*qhlcnh(mgs)
       pschlmd(mgs) =    &
 !     &  + fschl(mgs)*qhlshr(mgs)    &
      &  +(1-il5(mgs))*fschl(mgs)*qhlmlr(mgs)*mixedphasefac    &
@@ -24291,91 +24267,6 @@ END SUBROUTINE nssl_2mom_driver
       end do
       end if
 
-
-!
-!  ice spheres
-!
-      IF ( lis > 1 ) THEN
-      if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
-      do mgs = 1,ngscnt
-      pscisi(mgs) = 0.0
-      pscisd(mgs) = 0.0
-      pscisi(mgs) =  pscisi(mgs)   &
-     & + max(-schacis(mgs),0.0)   &
-     & + max(-schlacis(mgs),0.0)   &
-     & + max(-scsacis(mgs),0.0)
-      pscisd(mgs) =  pscisd(mgs)   &
-     & + min(-schacis(mgs),0.0)   &
-     & + min(-schlacis(mgs),0.0)    &
-     & + min(-scsacis(mgs),0.0)
-
-      qcitmp = Max(0.0,qx(mgs,lis) +   &
-     &   dtp*(pqisi(mgs)+pqisd(mgs)) )
-
-      IF ( qcitmp .gt. qxmin(lis) ) then
-
-       ccitmp = Max(0.001, cx(mgs,lis) + dtp*(pcisi(mgs)+pcisd(mgs)) )
-      
-      cpci = (scx(mgs,lis)   &
-     &   +dtp*( pscisi(mgs)+pscisd(mgs)   &
-     &         +pscismi(mgs)+pscismd(mgs)))/ccitmp
-      
-          IF ( Abs(cpci) .gt. scippmx .and.   &
-     &       ( pscisi(mgs)+pscisd(mgs) ) .ne. 0.0 .and.   &
-     &    Sign(1.0,scx(mgs,lis)) .eq.   &
-     &        Sign(1.0,( pscisi(mgs)+pscisd(mgs) )) ) THEN
-          
-           cpci0 = Sign(scippmx,cpci)
-          
-           scfac = (cpci0*ccitmp - scx(mgs,lis) -    &
-     &       dtp*(pscismi(mgs)+pscismd(mgs)))/   &
-     &              ( dtp*(pscisi(mgs)+pscisd(mgs)) )
-!           IF ( scfac .gt. 1.0 .or. scfac .lt. 0.0 ) THEN
-           IF ( scfac .gt. 1.0 ) THEN
-             write(iunit,*) 'OUCH: sccifac = ',scfac,   &
-     & dtp*(pscismi(mgs)+pscismd(mgs)),cpci,scx(mgs,lis),ccitmp
-             write(0,*) 'OUCH: sccifac = ',scfac,   &
-     & dtp*(pscismi(mgs)+pscismd(mgs)),cpci,scx(mgs,lis),ccitmp,   &
-     & kgs(mgs),temg(mgs)
-           ENDIF
-          scfac = Max(scfac,0.0)
-          scfac = Min(scfac,1.0)
-
-!        IF ( scfac .lt. 1.0 ) THEN
-!        write(iunit,*) 'LOOK: sccifac = ',scfac,cpci,scx(mgs,li),ccitmp,
-!     : kgs(mgs),temg(mgs)
-!        ENDIF
-         
-        ELSE
-          scfac = 1.0
-        ENDIF
-      ELSE
-       scfac = 0.0
-      ENDIF ! ( qcitmp .gt. qxmin(li) ) 
-
-      IF ( scfac .lt. 1.0 ) THEN
-
-
-       schacis(mgs) = scfac*schacis(mgs)
-       schlacis(mgs) = scfac*schlacis(mgs)
-       scsacis(mgs) = scfac*scsacis(mgs)
-
-      pscisi(mgs) = 0.0
-      pscisd(mgs) = 0.0
-      pscisi(mgs) =  pscisi(mgs)   &
-     & + max(-schacis(mgs),0.0)   &
-     & + max(-schlacis(mgs),0.0)   &
-     & + max(-scsacis(mgs),0.0)
-      pscisd(mgs) =  pscisd(mgs)   &
-     & + min(-schacis(mgs),0.0)   &
-     & + min(-schlacis(mgs),0.0)   &
-     & + min(-scsacis(mgs),0.0)
-      
-      ENDIF
-
-      end do
-      end if
-      ENDIF ! lis > 1
 
 
 !
@@ -25528,7 +25419,6 @@ END SUBROUTINE nssl_2mom_driver
      &  +fscrw(mgs)*ifrzg*qrfrz(mgs))   
         write(0,*)   +fscrw(mgs)*qhacr(mgs)+fsccw(mgs)*qhacw(mgs)   
         write(0,*)   +fscsw(mgs)*qhacs(mgs)+fscci(mgs)*qhaci(mgs)   
-        write(0,*)  +fscis(mgs)*qhacis(mgs) 
 
         write(0,*) 'pschwmd parts'
         write(0,*)   - fschw(mgs)*qhlcnh(mgs),fschw(mgs),qhlcnh(mgs)  
@@ -25541,7 +25431,6 @@ END SUBROUTINE nssl_2mom_driver
         write(0,*)  +fscrw(mgs)*qhlacr(mgs),fsccw(mgs)*qhlacw(mgs)   
         write(0,*)  +fscsw(mgs)*qhlacs(mgs),fscci(mgs)*qhlaci(mgs)   
         write(0,*)  + fschw(mgs)*qhlcnh(mgs) ,fschw(mgs),qhlcnh(mgs) 
-        write(0,*)  + fscis(mgs)*qhlacis(mgs)
 
 
      write(0,*) 'qs,qsold: ',qx(mgs,ls), qx(mgs,ls) - dtp*(pqswi(mgs)+pqswd(mgs))
