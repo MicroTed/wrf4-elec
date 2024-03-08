@@ -79,10 +79,10 @@ SUBROUTINE microphysics_driver(                                          &
                       ,f_effr,f_ice_effr,f_tot_effr                      &
                       ,f_qic_effr,f_qip_effr,f_qid_effr                  &                 
                       ,scr,scw,sci,scs,sch,schl,sciona,sctot             &
-                      ,clnox,f_clnox                                     &
+                      ,clnox                                             &
                       ,ipelectmp,idischarge                              & ! Explicit lightning namelist flags
 #ifdef WRF_ELEC 
-                      ,f_scr,f_scw,f_sci,f_scs,f_sch,f_schl,f_sciona     &
+                      ,f_scr,f_scw,f_sci,f_scs,f_sch,f_schl,f_sciona,f_clnox     &
                       ,iscreen,lightradtmp,ibrkdtmp,ecrittmp,disfrac   & ! Explicit lightning namelist flags
                       , nssl_elgtfestop,nssl_einternal,nssl_tgrnd,nssl_zgrnd &
 #endif
@@ -892,7 +892,6 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    real, parameter :: eperao = 8.8592e-12 ! permittivity of air
    real, optional, intent(in) :: nssl_elgtfestop
 !   fair weather elec field params
-   logical, external :: wrf_dm_on_monitor
 
 #ifdef DM_PARALLEL
       INCLUDE 'mpif.h'
@@ -911,6 +910,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 ! End explicit lightning
 #endif
 
+   logical, external :: wrf_dm_on_monitor
 
 !---------------------------------------------------------------------
 !  check for microphysics type.  We need a clean way to
