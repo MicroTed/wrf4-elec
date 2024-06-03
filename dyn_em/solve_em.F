@@ -154,7 +154,7 @@ SUBROUTINE solve_em ( grid , config_flags  &
    LOGICAL                        :: tenddec
    
    ! Flag for producing diagnostic fields (e.g., radar reflectivity)
-   LOGICAL                        :: diag_flag
+   LOGICAL                        :: diag_flag, diag_flag_hist
    INTEGER                        :: ke_diag ! tells reflectivity calculation whether to do full depth or only k=1
    LOGICAL                        :: restart_flag !  tells if it is a restart timestep to write restart files. 
    
@@ -379,6 +379,7 @@ SUBROUTINE solve_em ( grid , config_flags  &
       diag_flag = .true.
       ke_diag = min(k_end,kde-1) ! set depth to full domain for reflectivity field
    endif
+   diag_flag_hist = diag_flag
    IF (config_flags%nwp_diagnostics == 1) diag_flag = .true.
 
    grid%itimestep = grid%itimestep + 1
@@ -3992,6 +3993,7 @@ BENCH_START(micro_driver_tim)
       &        , qnwfa2d=grid%qnwfa2d, qnifa2d=grid%qnifa2d, qnbca2d=grid%qnbca2d       & ! G. Thompson
       &        , qnocbb2d=grid%qnocbb2d, qnbcbb2d=grid%qnbcbb2d             & ! for biomass burning emissions
       &        , diagflag=diag_flag, do_radar_ref=config_flags%do_radar_ref &
+      &        , diag_flag_hist=diag_flag_hist                              &
       &        , ke_diag=ke_diag                                           &
       &        ,u=grid%u_phy,v=grid%v_phy &
       &        ,scalar=scalar,num_scalar=num_scalar                             &

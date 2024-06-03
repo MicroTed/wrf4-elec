@@ -82,9 +82,10 @@ SUBROUTINE microphysics_driver(                                          &
                       ,f_effr,f_ice_effr,f_tot_effr                      &
                       ,f_qic_effr,f_qip_effr,f_qid_effr                  &                 
                       ,scr,scw,sci,scs,sch,schl,sciona,sctot             &
-                      ,clnox,f_clnox                                     &
+                      ,clnox                                             &
                       ,ipelectmp,idischarge                              & ! Explicit lightning namelist flags
 #ifdef WRF_ELEC 
+                      ,f_clnox                                           &
                       ,f_scr,f_scw,f_sci,f_scs,f_sch,f_schl,f_sciona     &
                       ,iscreen,lightradtmp,ibrkdtmp,ecrittmp,disfrac   & ! Explicit lightning namelist flags
                       , nssl_elgtfestop,nssl_einternal,nssl_tgrnd,nssl_zgrnd &
@@ -151,6 +152,7 @@ SUBROUTINE microphysics_driver(                                          &
 ! Added the RI_CURR array to the call
                       ,ri_curr                                           &
                       ,diagflag,   do_radar_ref                          &
+                      ,diag_flag_hist                                    &
                       ,ke_diag                                           &
                       ,re_cloud, re_ice, re_snow                         & ! G. Thompson
                       ,has_reqc, has_reqi, has_reqs                      & ! G. Thompson
@@ -821,7 +823,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 ! End explicit lightning
 
 
-   LOGICAL, OPTIONAL, INTENT(IN) :: diagflag
+   LOGICAL, OPTIONAL, INTENT(IN) :: diagflag, diag_flag_hist
    INTEGER, OPTIONAL, INTENT(IN) :: ke_diag ! tells reflectivity calculation whether to do full depth or only k=1
    REAL, INTENT(IN) :: ccn_conc ! RAS
    INTEGER, OPTIONAL, INTENT(IN) :: do_radar_ref
@@ -908,7 +910,6 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    real, parameter :: eperao = 8.8592e-12 ! permittivity of air
    real, optional, intent(in) :: nssl_elgtfestop
 !   fair weather elec field params
-   logical, external :: wrf_dm_on_monitor
 
 #ifdef DM_PARALLEL
       INCLUDE 'mpif.h'
@@ -923,8 +924,10 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    double precision, parameter :: efb1 = 0.50, efb2 = 0.65, efb3 = 0.10
    integer :: ng =3
    integer :: ngx1,ngx2,ngy1,ngy2
+   logical, save :: clear_history = .true.
 ! End explicit lightning
 #endif
+   logical, external :: wrf_dm_on_monitor
 
 
 !---------------------------------------------------------------------
@@ -950,8 +953,10 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
       wmax = wrf_dm_max_real ( wmax )
       wmin = wrf_dm_min_real ( wmin )
 #endif
-      WRITE( wrf_err_message , * ) 'microphysics_driver: GLOBAL w max/min = ', wmax, wmin
-      CALL wrf_message ( wrf_err_message )
+      IF ( wrf_dm_on_monitor() ) THEN
+        WRITE( wrf_err_message , * ) 'microphysics_driver: GLOBAL w max/min = ', wmax, wmin
+        CALL wrf_message ( wrf_err_message )
+      ENDIF
    ENDIF
 
 #if ( WRF_ELEC >= 1 )
