@@ -5077,7 +5077,7 @@
             BMG_MSG_MyProc = MSG_myproc()
             NProc  = MSG_nproc()
          ELSE
-            IF( MyProc.EQ.1 ) PRINT *,' MSG NOT INITIALIZED!'
+            IF( MyProc.EQ.1 ) PRINT *,'WRFELEC: MSG NOT INITIALIZED! ISETUP = ',isetup
          ENDIF
 
       ENDIF
@@ -5103,7 +5103,7 @@
       ! Processor indexing
       !
       IF ( BMG_MSG_MyProc.NE.BMG_MSG_iGRID(id_BMG_MSG_MyProc) ) THEN
-         WRITE(*,*) '**** ERROR: BMG3_SymStd_SOLVE_boxmg.f ... '
+         WRITE(*,*) '**** ERROR: WRF_SymStd_SOLVE_boxmgdg ... '
          WRITE(*,*) ' MyProc =         ', MyProc
          WRITE(*,*) ' BMG_MSG_MyProc = ', BMG_MSG_MyProc
          STOP
