@@ -22,6 +22,8 @@
       light(:,:) = 0.
       lightdis(:,:) = 0.
       lightdens(:,:) = 0.
+      induc(:,:,:) = 0.0
+      noninduc(:,:,:) = 0.0
        IF ( idischarge == 1 ) THEN
          lightfod(:,:) = 0.
        ELSEIF ( idischarge >= 2 ) THEN
