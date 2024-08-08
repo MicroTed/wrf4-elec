@@ -1,5 +1,4 @@
-       IF ( (mp_physics == NSSL_2MOM .or. mp_physics == NSSL_2MOMG .or.  &
-             mp_physics == NSSL_2MOMCCN ) .and. elec_physics > 0 ) THEN
+       IF ( mp_physics == NSSL_2MOM .and. elec_physics > 0 ) THEN
 
 !     its = ips
 !     ite = ipe

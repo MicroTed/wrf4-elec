@@ -2232,10 +2232,12 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      ELECz = elecz,                      & 
 !                     SCION = scion,                      & 
                      SCIONA = sciona,                    & 
+                     ipelectmp = ipelectmp,              &
                      PII=pi_phy,                         &
                      P=p,                                &
                      W=w,                                &
                      DZ=dz8w,                            &
+                     dx=dx, dy=dy,                       &
                      DTP=dt,                             &
                      DN=rho,                             &
                      RAINNC   = RAINNC,                  &

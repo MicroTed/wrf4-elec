@@ -3489,17 +3489,14 @@
      IF ( model_config_rec % elec_physics > 0 ) THEN
       DO i = 1, model_config_rec % max_dom
        IF ( .NOT. model_config_rec % grid_allowed(i) ) CYCLE
-       IF ( .not. ( model_config_rec % mp_physics(i) .EQ. NSSL_2MOM  .or. &
-                    model_config_rec % mp_physics(i) .EQ. NSSL_2MOMG .or. &
-                    model_config_rec % mp_physics(i) .EQ. NSSL_2MOMCCN ) ) THEN
+       IF ( .not. ( model_config_rec % mp_physics(i) .EQ. NSSL_2MOM ) ) THEN
 
-         wrf_err_message = '--- NOTE: Electrification (elec_physics) only works with NSSL_2MOM, '// & 
-                              'NSSL_2MOMCCN, or NSSL_2MOMg  '
+         wrf_err_message = '--- NOTE: Electrification (elec_physics) only works with NSSL_2MOM '
          CALL wrf_message ( wrf_err_message )
 !         model_config_rec % elec_physics = 0
 !         CALL wrf_error_fatal ( wrf_err_message )
         ENDIF
-        IF ( model_config_rec % mp_physics(i) .EQ. NSSL_2MOMG ) THEN
+        IF ( model_config_rec % nssl_hail_on(i) == 0 ) THEN
           ! make sure to use option that turns off hail charge density
           IF ( model_config_rec % elec_physics == 1 ) THEN
              model_config_rec % elec_physics = 11
