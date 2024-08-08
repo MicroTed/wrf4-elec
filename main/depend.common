@@ -1008,7 +1008,7 @@ module_physics_init.o: \
 	module_mp_gsfcgce_4ice_nuwrf.o \
 	module_mp_morr_two_moment.o \
 	module_mp_milbrandt2mom.o \
-	module_mp_nssl_2mom.o \
+	$(N2M)    \
 	module_mp_wdm5.o \
 	module_mp_wdm6.o \
 	module_cam_physconst.o \
@@ -1055,7 +1055,7 @@ module_microphysics_driver.o: \
 	module_mp_morr_two_moment.o \
 	module_mp_morr_two_moment_aero.o \
 	module_mp_milbrandt2mom.o \
-	module_mp_nssl_2mom.o \
+	$(N2M)   \
 	module_mp_wdm5.o \
 	module_mp_wdm6.o \
 	module_mp_cammgmp_driver.o \
