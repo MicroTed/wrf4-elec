@@ -11750,7 +11750,7 @@ END SUBROUTINE nssl_2mom_driver
       IF ( qcw > 0.0 ) THEN
         rar = exw*qcw*1.0e3*rho0*vt*Abs(rarfac)
       ELSE
-        rar = 1.0 ! 1.5*rar0
+        rar = 0.0 ! 1.5*rar0
       ENDIF
       t = temcg
 
