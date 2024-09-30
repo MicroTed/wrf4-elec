@@ -95,6 +95,20 @@
        write(0,*) 'nbw,nbe,nbs,nbn = ',nbw,nbe,nbs,nbn
        ENDIF
 
+       IF ( mpi_setup_flag < 0 ) THEN
+         CALL TASK_PROC_MAP()
+
+         IF ( irealmpitype == mpi_real ) THEN
+           write(0,*) 'irealmpitype = ',irealmpitype,' = mpi_real'
+         ELSEIF ( irealmpitype == mpi_double_precision ) THEN
+           write(0,*) 'irealmpitype = ',mpi_double_precision, ' = mpi_double_precision'
+         ELSE
+           write(0,*) 'irealmpitype not correctly defined'
+           WRITE( wrf_err_message , * ) 'WRF-ELEC: irealmpitype not correctly defined. Stop. '
+           CALL wrf_error_fatal ( wrf_err_message )
+         ENDIF
+
+       ENDIF
 
        ngx1 = -ims0 ! ips - ims - 1
        ngx2 = ime - ite
@@ -551,7 +565,7 @@
 !       sci(i,k,j)=0.95*sci(i,k,j)
 !       scs(i,k,j)=0.95*scs(i,k,j)
 !       if (f_schl) schl(i,k,j)=0.95*schl(i,k,j)
-        sciona(i,k,j) = sciona(i,k,j) - 0.05*sctot(i,k,j)
+        IF ( f_sciona ) sciona(i,k,j) = sciona(i,k,j) - 0.05*sctot(i,k,j)
         sctot(i,k,j)  = sctot(i,k,j)  - 0.05*sctot(i,k,j)
        enddo
        enddo
@@ -584,7 +598,7 @@
 !           of lightning (iter == 1)
 !       Also should update sctot after the screening charge application.
 
-      IF ( iscreen .ge. 1  ) THEN 
+      IF ( iscreen .ge. 1 .and. f_sciona ) THEN 
       
 !      write(0,*) 'call screen'
 

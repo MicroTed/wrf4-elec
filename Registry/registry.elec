@@ -1,20 +1,24 @@
 # SPACE CHARGE EXPLICIT LIGHTNING
 state   real    scr            ikjftb  scalar      1         -     \
-   i0rhusdf=(bdy_interp:dt)    "SCR"       "Rain space charge mixing ratio" "# C kg(-1)"
+   i0rhusdf=(bdy_interp:dt)    "SCR"       "Rain space charge mixing ratio" "C kg(-1)"
 state   real    scw            ikjftb  scalar      1         -     \
-   i0rhusdf=(bdy_interp:dt)    "SCW"       "cloud water space charge mixing ratio" "# C kg(-1)"
+   i0rhusdf=(bdy_interp:dt)    "SCW"       "cloud water space charge mixing ratio" "C kg(-1)"
 state   real    sci            ikjftb  scalar      1         -     \
-   i0rhusdf=(bdy_interp:dt)    "SCI"       "cloud ice space charge mixing ratio" "# C kg(-1)"
+   i0rhusdf=(bdy_interp:dt)    "SCI"       "cloud ice space charge mixing ratio" "C kg(-1)"
 state   real    scs            ikjftb  scalar      1         -     \
-   i0rhusdf=(bdy_interp:dt)    "SCS"       "snow space charge mixing ratio" "# C kg(-1)"
+   i0rhusdf=(bdy_interp:dt)    "SCS"       "snow space charge mixing ratio" "C kg(-1)"
 state   real    sch            ikjftb  scalar      1         -     \
-   i0rhusdf=(bdy_interp:dt)    "SCH"       "graupel water space charge mixing ratio" "# C kg(-1)"
+   i0rhusdf=(bdy_interp:dt)    "SCH"       "graupel water space charge mixing ratio" "C kg(-1)"
 state   real    schl           ikjftb  scalar      1         -     \
-   i0rhusdf=(bdy_interp:dt)    "SCHL"       "hail water space charge mixing ratio" "# C kg(-1)"
+   i0rhusdf=(bdy_interp:dt)    "SCHL"       "hail water space charge mixing ratio" "C kg(-1)"
 state   real    sciona          ikjftb  scalar      1         -     \
-   i0rhusdf=(bdy_interp:dt)    "SCIONA"       "Passive net ion space charge" "# C kg(-1)"
+   i0rhusdf=(bdy_interp:dt)    "SCIONA"       "Passive net ion space charge" "C kg(-1)"
 state   real    clnox          ikjftb  scalar      1         -     \
    i0rhusdf=(bdy_interp:dt)    "CLNOX"      "Lightning NOx concentration" "# moles kg(-1)"
+state   real    cnion          ikjftb  scalar      1         -     \
+   i0rhusdf=(bdy_interp:dt)    "CNION"       "Negative ion concentration" "# kg(-1)"
+state   real    cpion          ikjftb  scalar      1         -     \
+   i0rhusdf=(bdy_interp:dt)    "CPION"       "Negative ion concentration" "# kg(-1)"
 # END SPACE CHARGE EXPLICIT LIGHTNING
 
 # EXPLICIT LIGHTNING
@@ -58,15 +62,16 @@ rconfig   real     nssl_einternal         namelist,physics      1           200.
 rconfig   real     nssl_tgrnd             namelist,physics      1           266.16    rh       "Temperature threshold for CG (MSZ)"  ""      ""
 rconfig   real     nssl_zgrnd             namelist,physics      1             -1.     rh       "Height threshold for CG (MSZ)"  ""      ""
 rconfig   integer  nssl_clnox             namelist,physics      1             0       rh       "Lightning NOX prediction flag"  ""      ""
+rconfig   integer  nssl_ionopt            namelist,physics      1            -1       rh       "Small ion option flag"  ""      ""
 # end Explicit lightning
 
 rconfig   integer  elec_physics           namelist,physics      1            0       irh       "elec_physics"            ""      ""
 
 # external WRF-ELEC package
 package   noelec             elec_physics==0             -             -
-package   eleclgt            elec_physics==1             -             scalar:scr,scw,sci,scs,sch,schl,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis
+package   eleclgt            elec_physics==1             -             scalar:scr,scw,sci,scs,sch,schl;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis
 # for case of no hail (nssl_2momg)
-package   eleclgtg           elec_physics==11            -             scalar:scr,scw,sci,scs,sch,sciona;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod
+package   eleclgtg           elec_physics==11            -             scalar:scr,scw,sci,scs,sch;state:rscghis_2d,sctot,noninduc,induc,pot,elecmag,elecx,elecy,elecz,light,lightdens,lightdis,lightfod
 
 package lightning1d          nssl_idischarge==1   -    state:lightfod
 package lightning3d          nssl_idischarge==2   -    state:flshi,flshn,flshp,flshfedic,flshfedicp,flshfedicn,flshfedcg,flshfedcgp,flshfedcgn
@@ -74,4 +79,8 @@ package lightning3d          nssl_idischarge==2   -    state:flshi,flshn,flshp,f
 
 package nssl_cnox_off nssl_clnox==0   -   -
 package nssl_cnox_on  nssl_clnox==1   -   scalar:clnox
+
+package nssl_ion_off  nssl_ionopt==0   -   -
+package nssl_ion_simple  nssl_ionopt==1   -   scalar:sciona
+package nssl_ion_full  nssl_ionopt==2   -   scalar:cnion,cpion
 

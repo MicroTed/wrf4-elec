@@ -3487,6 +3487,11 @@
 !-----------------------------------------------------------------------
 #if ( (EM_CORE == 1) && (WRF_ELEC == 1) )
      IF ( model_config_rec % elec_physics > 0 ) THEN
+        IF ( model_config_rec%nssl_ionopt <= 0 ) THEN
+        ! make sure at least passive ions are on
+          model_config_rec%nssl_ionopt = 1
+        ENDIF
+
       DO i = 1, model_config_rec % max_dom
        IF ( .NOT. model_config_rec % grid_allowed(i) ) CYCLE
        IF ( .not. ( model_config_rec % mp_physics(i) .EQ. NSSL_2MOM ) ) THEN
@@ -3502,10 +3507,12 @@
              model_config_rec % elec_physics = 11
           ENDIF
         ENDIF
+       
       ENDDO
      ELSE ! no electricity
         model_config_rec%nssl_idischarge = 0  ! turn off discharge arrays
         model_config_rec%nssl_clnox = 0
+        model_config_rec%nssl_ionopt = 0
      ENDIF
      
      IF ( model_config_rec % max_dom > 1 ) THEN

@@ -1,5 +1,5 @@
 !
-#define FLOAT_PRECISION MPI_DOUBLE_PRECISION
+! #define FLOAT_PRECISION MPI_DOUBLE_PRECISION
 
       Module  module_discharge_msz
 #ifdef DM_PARALLEL
@@ -1212,7 +1212,7 @@
       mxmn_size = nz1
 
 ! find out the max emag at each level, and which processor it is on
-      CALL MPI_Allreduce(exyz_send_buffer, exyz_recv_buffer, mxmn_size, MPI_REAL,  &
+      CALL MPI_Allreduce(exyz_send_buffer, exyz_recv_buffer, mxmn_size, irealmpitype,  &
      &                  MPI_MAX, local_communicator, mpi_error_code)
 
       IF (mpi_error_code /= MPI_SUCCESS) THEN
@@ -1272,8 +1272,8 @@
       exyz_send_size = nz1*3
       exyz_recv_size = nz1*3
 
-      CALL MPI_Gather(exyz_send_buffer,exyz_send_size,MPI_REAL,  &
-     &               exyz_recv_buffer,exyz_recv_size,MPI_REAL,   &
+      CALL MPI_Gather(exyz_send_buffer,exyz_send_size,irealmpitype,  &
+     &               exyz_recv_buffer,exyz_recv_size,irealmpitype,   &
      &               0,local_communicator,mpi_error_code)
 
       IF (mpi_error_code /= MPI_SUCCESS) THEN
@@ -1679,7 +1679,7 @@
        NLzchoose = ichoose_send_buffer(9)
 
 #ifdef MPI
-       CALL MPI_Bcast(mpitotin, 5, MPI_REAL, ichooserank, local_communicator, mpi_error_code)
+       CALL MPI_Bcast(mpitotin, 5, irealmpitype, ichooserank, local_communicator, mpi_error_code)
 #endif
         emag = mpitotin(1)
         ez = mpitotin(2)
@@ -2149,7 +2149,7 @@
 
        ! send trje info to all processors
         n = nenum*nttim*ninfo
-        CALL MPI_Bcast(trje, n, MPI_REAL, ichooserank, my_comm, mpi_error_code)
+        CALL MPI_Bcast(trje, n, irealmpitype, ichooserank, my_comm, mpi_error_code)
 
 ! idxlgt(nenum,nttim,3)       
         n = nenum*nttim*3
@@ -2163,11 +2163,11 @@
 !        
 !         westward_tag = 10
 !         IF ( my_rank == ichooserank ) THEN
-!           Call MPI_Send(trje, n, MPI_REAL, 0, westward_tag, local_communicator, mpi_error_code)
+!           Call MPI_Send(trje, n, irealmpitype, 0, westward_tag, local_communicator, mpi_error_code)
 !         ENDIF
 
          IF ( my_rank == 0 .and. ndebug > 1 ) THEN
-!           Call MPI_Recv(trje, n, MPI_REAL, ichooserank, westward_tag, local_communicator, my_mpi_status, mpi_error_code)
+!           Call MPI_Recv(trje, n, irealmpitype, ichooserank, westward_tag, local_communicator, my_mpi_status, mpi_error_code)
       DO in = 1,nenum
        it = nttimend(in)
 !      write(iunit,*) '==================================================='
@@ -2638,7 +2638,7 @@
 
        k = 14
        
-       CALL MPI_Bcast(rchoose_send_buffer, k, MPI_REAL, ichooserank, local_communicator, mpi_error_code)
+       CALL MPI_Bcast(rchoose_send_buffer, k, irealmpitype, ichooserank, local_communicator, mpi_error_code)
 
        IF ( my_rank /= ichooserank ) THEN
        isendn = Nint( rchoose_send_buffer(1) )
@@ -3386,12 +3386,12 @@
 #ifdef MPI
 
        n = 2*maxdist+1
-       CALL MPI_AllReduce(chgavailiter(-maxdist), chgavailitersum(-maxdist), n, MPI_REAL, MPI_SUM, my_comm, mpi_error_code)
+       CALL MPI_AllReduce(chgavailiter(-maxdist), chgavailitersum(-maxdist), n, irealmpitype, MPI_SUM, my_comm, mpi_error_code)
        
        chgavailiter(-maxdist:maxdist) = chgavailitersum(-maxdist:maxdist)
        chgavailitersum(:) = 0.0
 
-       CALL MPI_AllReduce(voliter(-maxdist), chgavailitersum(-maxdist), n, MPI_REAL, MPI_SUM, my_comm, mpi_error_code)
+       CALL MPI_AllReduce(voliter(-maxdist), chgavailitersum(-maxdist), n, irealmpitype, MPI_SUM, my_comm, mpi_error_code)
        voliter(-maxdist:maxdist) = chgavailitersum(-maxdist:maxdist)
        chgavailitersum(:) = 0.0
 

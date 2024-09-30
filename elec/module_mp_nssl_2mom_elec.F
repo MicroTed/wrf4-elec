@@ -1,6 +1,6 @@
 !WRF:MODEL_LAYER:PHYSICS
 
-! prepocessed on "Aug  5 2024" at "15:48:06"
+! prepocessed on "Aug  8 2024" at "11:32:03"
 
 
 
@@ -2357,7 +2357,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
                               rscghis_2d,rscghis_2dp,rscghis_2dn,                       &
                               scr,scw,sci,scs,sch,schl,sctot,                           &
                               elec_physics,                                             &
-                              induc,elecz,scion,sciona,                                 &
+                              induc,elecz,scion,sciona,f_scion,f_sciona,                &
                               noninduc,noninducp,noninducn,                             &
                               pcc2, pre2, depsubr,      &
                               mnucf2, melr2, ctr2,     &
@@ -2430,7 +2430,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
       real, dimension(ims:ime, kms:kme, jms:jme),  optional, intent(inout)::                   &
                             induc,noninduc,noninducp,noninducn  ! charging rates: inductive, noninductive (all, positive, negative to graupel)
       real, dimension(ims:ime, kms:kme, jms:jme),  optional, intent(in) :: elecz ! elecsave = Ez
-      real, dimension(ims:ime, kms:kme, jms:jme,2),optional, intent(inout) :: scion
+      real, dimension(ims:ime, kms:kme, jms:jme, 2),optional, intent(inout) :: scion
       real, dimension(ims:ime, kms:kme, jms:jme), intent(in)::  p,w,dz,dn
 
       real, dimension(ims:ime, kms:kme, jms:jme), intent(in)::  pii
@@ -2475,6 +2475,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
       logical, optional, intent(in) :: lastloop
       logical, optional, intent(in) :: diagflag, f_cna, f_cn, f_cina, f_cnuf
       logical, optional, intent(in) :: f_qc, f_qr, f_qi, f_qs, f_qh, f_qhl
+      logical, optional, intent(in) :: f_scion,f_sciona
       integer, optional, intent(in) :: ipelectmp, ke_diag
 
 
@@ -2583,9 +2584,13 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
       integer :: loopcnt, loopmax, outerloopcnt
       logical :: lastlooptmp
 
+
+!
+#if defined(MPI) || defined( WRF_ELEC )
       integer, parameter :: ntot = 50
       double precision  mpitotindp(ntot), mpitotoutdp(ntot)
       INTEGER :: mpi_error_code = 1
+#endif
 
 ! -------------------------------------------------------------------
 
@@ -3034,20 +3039,31 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
           an(ix,1,kz,lsch)   = sch(ix,kz,jy)
           IF ( lhl > 1 ) an(ix,1,kz,lschl)   = schl(ix,kz,jy)
           
+          tmpchg = 0.0
+
           ! Fake ions for now -- will need to change this if real ions ever get used in WRF
           ! convert net ion density to positive or negative ions, so that underlying code is
           ! still ion-friendly
 !          scion2(ix,1,kz,1) = 0.0
 !          scion2(ix,1,kz,2) = 0.0
-             an(ix,1,kz,lscpi) = Max(0.0, sciona(ix,kz,jy))*eci*dn(ix,kz,jy)
-             an(ix,1,kz,lscni) = -Min(0.0,sciona(ix,kz,jy))*eci*dn(ix,kz,jy)
-          sciona2d(ix,1,kz)   = sciona(ix,kz,jy)*dn(ix,kz,jy)
+            IF ( present(f_sciona) .or. present(f_scion) ) THEN
+             IF ( f_sciona ) THEN
+              an(ix,1,kz,lscpi) = Max(0.0, sciona(ix,kz,jy))*eci*dn(ix,kz,jy)
+              an(ix,1,kz,lscni) = -Min(0.0,sciona(ix,kz,jy))*eci*dn(ix,kz,jy)
+              sciona2d(ix,1,kz)   = sciona(ix,kz,jy)*dn(ix,kz,jy)
+              tmpchg = sciona(ix,kz,jy)
+             ENDIF
+             IF ( f_scion ) THEN
+              an(ix,1,kz,lscpi) = Max(0.0, scion(ix,kz,jy,1))*dn(ix,kz,jy)
+              an(ix,1,kz,lscni) = Max(0.0, scion(ix,kz,jy,2))*dn(ix,kz,jy)
+              tmpchg = (an(ix,1,kz,lscpi)-an(ix,1,kz,lscni))*ec
+             ENDIF
+            ENDIF
           
-          tmpchg = 0.0
-          IF ( lhl > 0 ) tmpchg = an(ix,1,kz,lschl)
+          IF ( lhl > 0 ) tmpchg = tmpchg + an(ix,1,kz,lschl)
           tmp =  dn(ix,kz,jy)*(an(ix,1,kz,lscw)+an(ix,1,kz,lscr)+an(ix,1,kz,lsci)+ &
-     &                         an(ix,1,kz,lscs)+an(ix,1,kz,lsch)+tmpchg+ &
-     &                         sciona(ix,kz,jy) )*dx*dy*dz(ix,kz,jy)
+     &                         an(ix,1,kz,lscs)+an(ix,1,kz,lsch)+tmpchg  &
+     &                          )*dx*dy*dz(ix,kz,jy)
           chgneg1 = chgneg1 + Min(0.0, tmp)
           chgpos1 = chgpos1 + Max(0.0, tmp)
 !          chgiona1 = chgiona1 + sciona(ix,kz,jy)*dn(ix,kz,jy)*dx*dy*dz(ix,kz,jy)
@@ -3492,8 +3508,9 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
    ENDIF
 
 
- IF ( present( sciona ) .and. lnh > 1 .and. ipelec > 0) THEN
+ IF ( present( sciona ) .and. present( f_sciona ) .and. lnh > 1 .and. ipelec > 0) THEN
  ! attach ions
+   IF ( f_sciona ) THEN
    CALL SCIONATT    &
      &  (nx,ny,nz,na,jy &
      &  ,nor,nor &
@@ -3501,6 +3518,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
      &  ,an,dn1,t77 &
      &  ,pn,wn &
      &  ,dbz2d)
+   ENDIF
   ENDIF
 
 
@@ -3747,7 +3765,18 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
 
          IF ( present(scw) .and. ipelec > 0 .and. lscw > 1 ) THEN !{
 
-         sciona(ix,kz,jy) = (an(ix,1,kz,lscpi) - an(ix,1,kz,lscni))*ec/dn1(ix,1,kz) ! /dn(ix,kz,jy)
+          tmpchg = 0.0
+          IF ( present(sciona) .and. present(f_sciona) ) THEN
+           IF ( f_sciona ) THEN
+           sciona(ix,kz,jy) = (an(ix,1,kz,lscpi) - an(ix,1,kz,lscni))*ec/dn1(ix,1,kz) ! /dn(ix,kz,jy)
+           ENDIF
+          ENDIF
+          IF ( present( scion ) .and. present( f_scion )) THEN
+            IF ( f_scion ) THEN
+              scion(ix,kz,jy,1) = an(ix,1,kz,lscni)/dn1(ix,1,kz)
+              scion(ix,kz,jy,2) = an(ix,1,kz,lscpi)/dn1(ix,1,kz)
+            ENDIF
+          ENDIF
 !         sciona(ix,kz,jy) = (scion2(ix,1,kz,1) - scion2(ix,1,kz,2))*ec/dn(ix,kz,jy)
 !         sciona(ix,kz,jy) = sciona(ix,kz,jy)/dn(ix,kz,jy)
 
@@ -3757,7 +3786,7 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
          scs(ix,kz,jy)  = an(ix,1,kz,lscs)
          sch(ix,kz,jy)  = an(ix,1,kz,lsch)
          sctot(ix,kz,jy)  = dn1(ix,1,kz)*(scw(ix,kz,jy)+scr(ix,kz,jy)+sci(ix,kz,jy)+scs(ix,kz,jy) &
-      &                     + sch(ix,kz,jy)+sciona(ix,kz,jy) ) ! to get C/m3 for RHS calc later on
+      &                     + sch(ix,kz,jy) ) + (an(ix,1,kz,lscpi) - an(ix,1,kz,lscni))*ec ! to get C/m3 for RHS calc later on
          IF ( lhl > 1 ) THEN
          schl(ix,kz,jy)  = an(ix,1,kz,lschl)
          sctot(ix,kz,jy)  = sctot(ix,kz,jy)+dn1(ix,1,kz)*schl(ix,kz,jy)
@@ -3787,12 +3816,12 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
           chgpos3 = chgpos3 + Max(0.0, tmp)
           chgiona3 = chgiona3 + sciona(ix,kz,jy)*dn1(ix,1,kz)*dx*dy*dz(ix,kz,jy)
 
-         IF ( present(elecz) .and. present(scion) .and. ipelec > 1) THEN
+        ! IF ( present(elecz) .and. present(cnion) .and. ipelec > 1) THEN
 
-         scion(ix,kz,jy,1)  = an(ix,1,kz,lscpi) ! scion2(ix,1,kz,1)
-         scion(ix,kz,jy,2)  = an(ix,1,kz,lscni) ! scion2(ix,1,kz,2)
+        ! scion(ix,kz,jy,1)  = an(ix,1,kz,lscpi) ! scion2(ix,1,kz,1)
+        ! scion(ix,kz,jy,2)  = an(ix,1,kz,lscni) ! scion2(ix,1,kz,2)
 
-         ENDIF
+        ! ENDIF
 
 
          IF ( present(elecz) ) THEN
@@ -11750,7 +11779,7 @@ END SUBROUTINE nssl_2mom_driver
       IF ( qcw > 0.0 ) THEN
         rar = exw*qcw*1.0e3*rho0*vt*Abs(rarfac)
       ELSE
-        rar = 1.0 ! 1.5*rar0
+        rar = 0.0 ! 1.5*rar0
       ENDIF
       t = temcg
 

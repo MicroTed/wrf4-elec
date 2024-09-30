@@ -82,10 +82,10 @@ SUBROUTINE microphysics_driver(                                          &
                       ,f_effr,f_ice_effr,f_tot_effr                      &
                       ,f_qic_effr,f_qip_effr,f_qid_effr                  &                 
                       ,scr,scw,sci,scs,sch,schl,sciona,sctot             &
-                      ,clnox                                             &
+                      ,cnion,cpion,clnox                                 &
                       ,ipelectmp,idischarge                              & ! Explicit lightning namelist flags
 #ifdef WRF_ELEC 
-                      ,f_clnox                                           &
+                      ,f_cnion,f_cpion,f_clnox                           &
                       ,f_scr,f_scw,f_sci,f_scs,f_sch,f_schl,f_sciona     &
                       ,iscreen,lightradtmp,ibrkdtmp,ecrittmp,disfrac   & ! Explicit lightning namelist flags
                       , nssl_elgtfestop,nssl_einternal,nssl_tgrnd,nssl_zgrnd &
@@ -223,6 +223,7 @@ SUBROUTINE microphysics_driver(                                          &
   USE module_discharge_msz
   USE module_screen
   USE module_nudge_light
+  USE module_commasmpi, only: irealmpitype, setrealmpitype
 #endif
 
 
@@ -697,9 +698,9 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    integer, save :: ims0=0,ime0=0,jms0=0,jme0=0 ! use to aliase indices to use ghost zones
    integer, save :: nbw0 = 0, nbe0 = 0, nbs0 = 0, nbn0 = 0
 
-! local arrays -- could be made allocatable/save?
-!   REAL, DIMENSION( ims:ime , kms:kme, jms:jme,1:2) :: scion ! local array for the driver- 1=-, 2=+
-   REAL, DIMENSION( ims:ime , kms:kme, jms:jme,1:4) :: elec ! local array for the driver-only emag is used for I/O-ALWAYS USED IN 1D so NOT OPTIONAL !.
+! local arrays for electricity
+   REAL, allocatable, save :: cion(:,:,:,:) ! local array for the driver
+   REAL, allocatable, save :: elec(:,:,:,:) ! local array for the driver
 ! End Explicit lightning
 !   lightning nudging/assimilation
    REAL, OPTIONAL, DIMENSION( ims:ime, jms:jme ) ::      gridlight
@@ -735,7 +736,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                  ,kext_ft_qs,kext_ft_qg                           &
                  ,qnwfa_curr,qnifa_curr,qnbca_curr                & ! Added by G. Thompson
                  ,qvolg_curr,qvolh_curr, qrimef_curr              &
-                 ,scw,scr,sci,scs,sch,schl,sctot,sciona,clnox             ! Explicit Lightning
+                 ,scw,scr,sci,scs,sch,schl,sctot,sciona,clnox,cnion,cpion             ! Explicit Lightning
 
    REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                  &
          OPTIONAL,                                                &
@@ -807,7 +808,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 #ifdef WRF_ELEC
 ! Explicit lightning
                        ,f_elecx                                 & !lightning
-                       ,f_scw,f_scr,f_sci,f_scs,f_sch,f_schl,f_sciona,f_clnox & ! lightning
+                       ,f_scw,f_scr,f_sci,f_scs,f_sch,f_schl,f_sciona,f_clnox,f_cnion,f_cpion & ! lightning
 #endif
                        ,f_qzi,f_qzs,f_qzg,f_qzh,f_qvolg,f_qvolh              &
                        ,f_qrimef                                             &
@@ -911,6 +912,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    double precision :: dt1,dt4,timeboxmg
    real, parameter :: jc = -2.0e-12  ! fair weather current density J (Amp m**-2) (Helsdon & Farley 1987; Chiu (1978) has -2.7e-12, quoting Gish (1944))
    real, parameter :: eperao = 8.8592e-12 ! permittivity of air
+   real, parameter :: ec = 1.602e-19  ! fundamental unit of charge
+   real, parameter :: eci = 1.0/ec
    real, optional, intent(in) :: nssl_elgtfestop
 !   fair weather elec field params
 
@@ -966,6 +969,21 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    ENDIF
 
 #if ( WRF_ELEC >= 1 )
+      IF ( ipelectmp > 0 .and. .not. allocated( elec ) ) THEN
+        allocate( elec( ims:ime , kms:kme, jms:jme,1:4) )
+        IF ( present( f_cnion ) ) THEN
+          IF ( f_cnion ) THEN
+            allocate( cion( ims:ime , kms:kme, jms:jme,1:2) )
+            cion( ims:ime , kms:kme, jms:jme,1) = cnion( ims:ime , kms:kme, jms:jme)
+            cion( ims:ime , kms:kme, jms:jme,2) = cpion( ims:ime , kms:kme, jms:jme)
+          ENDIF
+        ENDIF
+        IF ( .not. allocated( cion ) ) THEN
+          allocate( cion( 1,1,1,1:2) )
+        ENDIF
+      ENDIF
+      
+      
       IF ( energyold < 0.0 .and. ipelectmp > 0 ) THEN
 
         its = max(ips,ids+sz)
@@ -2196,6 +2214,9 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 
         ELSEIF ( elec_physics > 0 .and. f_scw ) THEN
 
+!         IF ( f_cnion ) THEN
+!           cion
+!         ENDIF
          CALL nssl_2mom_driver(                          &
                      ITIMESTEP=itimestep,                &
                      TH=th,                              &
@@ -2231,7 +2252,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      INDUC = induc,                      & 
                      ELECz = elecz,                      & 
 !                     SCION = scion,                      & 
-                     SCIONA = sciona,                    & 
+                     SCIONA = sciona, f_sciona=f_sciona, & 
+                     scion = cion, f_scion=f_cnion,      &
                      ipelectmp = ipelectmp,              &
                      PII=pi_phy,                         &
                      P=p,                                &
@@ -3030,7 +3052,15 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 
       
 #if ( WRF_ELEC == 1 )
+#ifdef DM_PARALLEL
 #include "../elec/include_microphysics_driver_elec.F"
+
+        IF ( present( f_cnion ) ) THEN
+          IF ( f_cnion ) THEN
+            cnion( ims:ime , kms:kme, jms:jme) = cion( ims:ime , kms:kme, jms:jme,1)
+            cpion( ims:ime , kms:kme, jms:jme) = cion( ims:ime , kms:kme, jms:jme,2)
+          ENDIF
+        ENDIF
 
 ! LIGHTNING NUDGING - 
       IF ( present( nudge_lightning ) .and. present( gridlight ) ) THEN
@@ -3050,6 +3080,10 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
       ENDIF
 
 ! END LIGHTNING NUDGING
+#else
+         WRITE( wrf_err_message , * ) 'WRF-ELEC must be compiled with dmpar. Stop. '
+         CALL wrf_error_fatal ( wrf_err_message )
+#endif
 #endif
 
    ENDDO
