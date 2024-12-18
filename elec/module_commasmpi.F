@@ -2,15 +2,36 @@
    
       INTEGER :: w_proc = -1, e_proc = -1, s_proc = -1, n_proc = -1
       INTEGER :: mpi_setup_flag = -1
+      INTEGER :: irealmpitype
    
    CONTAINS
 
+
+!-------------------------------------------------------------------------------
+!
+! >>>>>>>>>>>>>>>>>>>>>>   SUBROUTINE setrealmpitype  <<<<<<<<<<<<<<<<<<<<<  !
+!
+!-------------------------------------------------------------------------------
+     subroutine setrealmpitype()
+     IMPLICIT NONE
+     INCLUDE "mpif.h"
+
+     INTEGER rtypesize, dtypesize, ierr
+     
+     CALL mpi_type_size ( MPI_REAL, rtypesize, ierr )
+     CALL mpi_type_size ( MPI_DOUBLE_PRECISION, dtypesize, ierr )
+     IF ( RWORDSIZE .EQ. rtypesize ) THEN
+       irealmpitype = MPI_REAL
+     ELSE IF ( RWORDSIZE .EQ. dtypesize ) THEN
+       irealmpitype = MPI_DOUBLE_PRECISION
+     ENDIF
+     
+     END subroutine setrealmpitype
 !-------------------------------------------------------------------------------
 !
 ! >>>>>>>>>>>>>>>>>>>>>>   SUBROUTINE TASKS-PROCS MAP  <<<<<<<<<<<<<<<<<<<<<  !
 !
 !-------------------------------------------------------------------------------
-
 
       SUBROUTINE TASK_PROC_MAP()
 
@@ -29,6 +50,7 @@
        ELSE
          RETURN
        ENDIF
+
 
               w_proc = MPI_UNDEFINED 
               e_proc = MPI_UNDEFINED
