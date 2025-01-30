@@ -5083,3 +5083,69 @@
 
       return
       end
+
+!###########################################################################
+!###########################################################################
+!
+! Subroutine chargetotals
+!
+!###########################################################################
+
+      subroutine chargetotals(totchg,totneg,totpos,sctot,  &
+                              dz8w, dx, dy,                &
+                              ims,ime,kms,kme,jms,jme,     &
+                              its,ite,kts,kte,jts,jte)
+#ifdef DM_PARALLEL
+      USE module_dm, ONLY : &
+         local_communicator, mytask, ntasks
+#endif
+       implicit none
+
+       real :: totchg,totneg,totpos
+       integer :: ims,ime,kms,kme,jms,jme
+       integer :: its,ite,kts,kte,jts,jte
+       real    ::dx,dy   ! dzz is dz8w
+       real, dimension( ims:ime , kms:kme , jms:jme ) :: sctot, dz8w
+       ! local vars
+       integer :: ix,jy,kz
+       double precision totneg1,totpos1,totneg2,totpos2,dv
+
+       integer, parameter :: ntot = 5
+       double precision  mpitotindp(ntot), mpitotoutdp(ntot)
+       integer :: mpi_error_code = 1
+#ifdef DM_PARALLEL
+       INCLUDE 'mpif.h'
+#endif
+
+       totneg1 = 0.0d0
+       totpos1 = 0.0d0
+
+      DO jy = jts,jte ! ny
+      do kz = kts,kte-1
+      DO ix = its,ite ! nx
+
+       dv = dx*dy*dz8w(ix,kz,jy)
+
+       totneg1 = totneg1 + Min(0.0, sctot(ix,kz,jy)*dv)
+       totpos1 = totpos1 + Max(0.0, sctot(ix,kz,jy)*dv)
+
+      end do
+      end do
+      end do
+
+#ifdef MPI
+       mpitotindp(1)  = totpos1
+       mpitotindp(2)  = totneg1
+
+      CALL MPI_Reduce(mpitotindp, mpitotoutdp, 4, MPI_DOUBLE_PRECISION, MPI_SUM, 0, local_communicator, mpi_error_code)
+
+       totpos1 = mpitotoutdp(1)
+       totneg1 = mpitotoutdp(2)
+
+#endif
+
+      totneg = totneg1
+      totpos = totpos1
+      totchg = totneg+totpos
+
+      end subroutine chargetotals

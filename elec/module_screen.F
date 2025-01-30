@@ -217,14 +217,30 @@
       end do
       end do
 
+      do kz = 1,     nz
+      do jy = 1,ny
+      do ix = 1,nx
+
+        dzi2(ix,jy,kz) = 0.5/dz2(ix,jy,kz)
+         if (ndebug) then
+          IF (dz2(ix,jy,kz).le.1.or.dzi2(ix,jy,kz).gt.20000.or.dzi2(ix,jy,kz).lt.0.) THEN
+          write(iunit,*) 'dzi2',dzi2(ix,jy,kz),dz2(ix,jy,kz),ix,jy,kz
+          ENDIF
+         endif
+       dslay(ix,jy,kz) = (dx*dy*dz2(ix,jy,kz))**(0.333333)
+
+      enddo
+      enddo
+      ENDDO
+
 #ifdef DM_PARALLEL
 
 
       IF ( ntasks .gt. 0) THEN 
 
         IF ( imap2 == 0) THEN 
-        imap2=1
-        CALL TASK_PROC_MAP()
+          imap2=1
+          CALL TASK_PROC_MAP()
         ENDIF
 
 ! Passing-sendrcv data for gradient computation near tile boundaries 
@@ -281,10 +297,18 @@
 !    should only be done once for dz...the array of PAIN !!!
         CALL sendrecv_westward(nx,ny,nz,ng,ng,0,ng,1,  &
      &        w_proc,e_proc,westward_tag,dz2)
+        CALL sendrecv_westward(nx,ny,nz,ng,ng,0,ng,1,  &
+     &        w_proc,e_proc,westward_tag,dslay)
+        CALL sendrecv_westward(nx,ny,nz,ng,ng,0,ng,1,  &
+     &        w_proc,e_proc,westward_tag,dzi2)
 
         eastward_tag = 206
         CALL sendrecv_eastward(nx,ny,nz,ng,ng,0,ng,1,  &
      &        w_proc,e_proc,eastward_tag,dz2)
+        CALL sendrecv_eastward(nx,ny,nz,ng,ng,0,ng,1,  &
+     &        w_proc,e_proc,eastward_tag,dslay)
+        CALL sendrecv_eastward(nx,ny,nz,ng,ng,0,ng,1,  &
+     &        w_proc,e_proc,eastward_tag,dzi2)
         ENDIF
         
         
@@ -293,10 +317,18 @@
         southward_tag = 209
         CALL sendrecv_southward(nx,ny,nz,ng,ng,0,ng,1, &
      &        n_proc,s_proc,southward_tag,dz2)
+        CALL sendrecv_southward(nx,ny,nz,ng,ng,0,ng,1, &
+     &        n_proc,s_proc,southward_tag,dslay)
+        CALL sendrecv_southward(nx,ny,nz,ng,ng,0,ng,1, &
+     &        n_proc,s_proc,southward_tag,dzi2)
 
         northward_tag = 212
         CALL sendrecv_northward(nx,ny,nz,ng,ng,0,ng,1,  &
      &        n_proc,s_proc,northward_tag,dz2)
+        CALL sendrecv_northward(nx,ny,nz,ng,ng,0,ng,1,  &
+     &        n_proc,s_proc,northward_tag,dslay)
+        CALL sendrecv_northward(nx,ny,nz,ng,ng,0,ng,1,  &
+     &        n_proc,s_proc,northward_tag,dzi2)
         ENDIF
 
       ENDIF ! ntasts > 0
@@ -311,27 +343,6 @@
       dxi = 1.0/dx
       dyi = 1.0/dy
 
-      do kz = 1,     nz
-      do jy = 1,ny
-      do ix = 1,nx
-
-!      IF (dz2(ix,jy,kz).gt.1.0) THEN ! because of mysterious small dz values in halo zones...
-        dzi2(ix,jy,kz) = 0.5/dz2(ix,jy,kz)
-         if (ndebug) then
-          IF (dz2(ix,jy,kz).le.1.or.dzi2(ix,jy,kz).gt.20000.or.dzi2(ix,jy,kz).lt.0.) THEN
-          write(iunit,*) 'dzi2',dzi2(ix,jy,kz),dz2(ix,jy,kz),ix,jy,kz
-          ENDIF
-         endif
-       dslay(ix,jy,kz) = (dx*dy*dz2(ix,jy,kz))**(0.333333)
-!      ELSE
-!      dz2(ix,jy,kz)=500. ! hack because stupid fortran puts in ZEROS as usual.
-!      dzi2(ix,jy,kz)= 0.5/dz2(ix,jy,kz)   
-!      dslay(ix,jy,kz)= (dx*dy*dz2(ix,jy,kz))**(0.333333)
-!      ENDIF
-
-      enddo
-      enddo
-      ENDDO
 
 ! polar conductivity interpolation
 !
@@ -349,7 +360,7 @@
       do jy = -ng+1,ny+ng
       do ix = -ng+1,nx+ng
 !     zlayer = (kz-kd1)*dz + 0.5*dz
-      zlayer(ix,jy,kz) = sum(dz(ix,1:kz,jy)) - 0.5*dz(ix,kz,jy)
+      zlayer(ix,jy,kz) = sum(dz2(ix,jy,1:kz)) - 0.5*dz2(ix,jy,kz)
        if (ndebug) then
         if (zlayer(ix,jy,kz).gt.20000.or.zlayer(ix,jy,kz).lt.0.) write(iunit,*) 'zlayer', zlayer(ix,jy,kz),dz(ix,kz,jy)
        endif

@@ -867,10 +867,11 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 
 ! LOCAL  VAR
 
-   INTEGER :: i,j,k,its,ite,jts,jte,ij,sz,n
+   INTEGER :: i,j,k,its,ite,jts,jte,ij,sz,n,nt_sub,it_sub
+   integer :: itssav,itesav,jtssav,jtesav
    LOGICAL :: channel
    LOGICAL :: nssl_progn = .false.
-   REAL    :: z0, z1, z2, w1, w2
+   REAL    :: z0, z1, z2, w1, w2, dt_sub
 
    integer, parameter :: ntot = 50
    real :: wmin, wmax
@@ -889,23 +890,25 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 
 #ifdef WRF_ELEC
 ! Explicit lightning
-   integer l,iter,lgtstp,loccur,nxdg,nydg,nzdg
+   integer l,iter,itersub,lgtstp,loccur,nxdg,nydg,nzdg
    character*40 :: flashtype
    integer, save :: numic,numcgp,numcgn
-   double precision, save :: cnoxtot,cnoxall,cnoxic,cnoxcg
+   double precision, save :: cnoxtot=0,cnoxall=0,cnoxic=0,cnoxcg=0
    double precision, save :: energynew = -1.d0, energyold = -1.d0
    logical, save :: one_flash_at_a_time = .true. ! Used for MSZ lightning: use 'true' to get energy of each flash,
                                                  ! but set to 'false' if energy not needed to decrease computation
                                                  ! 'false' allows multiple non-overlapping flashes to be run before
                                                  ! recomputing the electric potential
    real    :: energychange
+   double precision, save :: energy_diff = -1.d0
+
    integer :: inittot, inittot2, flashcount, count, init, init2, maskcount, maskcounttot
    logical :: irelax = .false.
    integer :: maxiter = 120
    integer, save :: iboxmgsetup = 0, isetup = 1
 !   REAL, DIMENSION(ims:ime, kms:kme, jms:jme ) ::  ezfair,height2
    REAL, DIMENSION(kms:kme) ::  potfair
-   real, allocatable        ::  temg(:,:,:)
+   real, allocatable        ::  temg(:,:,:),iontmp(:,:,:)
    integer, allocatable, save  ::  kcldtop(:,:)
    real :: tmp
    double precision :: etot
@@ -915,6 +918,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    real, parameter :: ec = 1.602e-19  ! fundamental unit of charge
    real, parameter :: eci = 1.0/ec
    real, optional, intent(in) :: nssl_elgtfestop
+   real :: totchg,totneg,totpos,totchgpre
 !   fair weather elec field params
 
 #ifdef DM_PARALLEL
@@ -1009,6 +1013,33 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
          
       
       ENDIF
+
+#ifdef WRF_ELEC
+      IF ( elec_physics > 0 ) THEN
+
+        its = max(ips,ids+sz)
+        ite = min(ipe,ide-1-sz)
+        jts = max(jps,jds+sz)
+        jte = min(jpe,jde-1-sz)
+
+        where ( rho > 0.0 )
+           sctot  = rho*(sci + scs + sch + schl + scw + scr + sciona)
+        elsewhere
+           sctot  = 0.
+        end where
+
+      call chargetotals(totchg,totneg,totpos,sctot,  &
+                              dz8w, dx, dy,                &
+                              ims,ime,kms,kme,jms,jme,     &
+                              its,ite,kts,kte,jts,jte)
+      
+         totchgpre = totchg
+         IF ( wrf_dm_on_monitor() ) THEN
+            write(6,'(a,3(2x,1pe12.5))') 'premic pos/neg/tot1: ',totpos,totneg,totchg
+         ENDIF
+      ENDIF
+#endif
+
 #endif
 
 #ifdef XEON_OPTIMIZED_WSM5
@@ -2255,6 +2286,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      SCIONA = sciona, f_sciona=f_sciona, & 
                      scion = cion, f_scion=f_cnion,      &
                      ipelectmp = ipelectmp,              &
+!                     isedonly_in = 0,                    &
+                     isedonly_in = Min(ipelectmp, 1),    &
                      PII=pi_phy,                         &
                      P=p,                                &
                      W=w,                                &
@@ -3053,6 +3086,17 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
       
 #if ( WRF_ELEC == 1 )
 #ifdef DM_PARALLEL
+      IF ( elec_physics > 0 ) THEN
+      call chargetotals(totchg,totneg,totpos,sctot,  &
+                              dz8w, dx, dy,                &
+                              ims,ime,kms,kme,jms,jme,     &
+                              its,ite,kts,kte,jts,jte)
+      
+         IF ( wrf_dm_on_monitor() ) THEN
+            write(6,'(a,3(2x,1pe12.5))') 'postmic pos/neg/tot: ',totpos,totneg,totchg
+            write(6,'(a,1(2x,1pe12.5))') 'post-pre = ',totchg - totchgpre
+         ENDIF
+
 #include "../elec/include_microphysics_driver_elec.F"
 
         IF ( present( f_cnion ) ) THEN
@@ -3061,6 +3105,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
             cpion( ims:ime , kms:kme, jms:jme) = cion( ims:ime , kms:kme, jms:jme,2)
           ENDIF
         ENDIF
+        
+       ENDIF ! ipelectmp
 
 ! LIGHTNING NUDGING - 
       IF ( present( nudge_lightning ) .and. present( gridlight ) ) THEN

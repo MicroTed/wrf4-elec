@@ -21,6 +21,7 @@
       light(:,:) = 0.
       lightdis(:,:) = 0.
       lightdens(:,:) = 0.
+!      ionsource(:,:,:) = 0.0
       induc(:,:,:) = 0.0
       noninduc(:,:,:) = 0.0
        IF ( idischarge == 1 ) THEN
@@ -38,22 +39,27 @@
        ENDIF
       
      endif
+     
+     ! this sets the clear flag for the next time step if a history dump is occurring now
+     IF ( diag_flag_hist ) THEN
+       clear_history = .true.
+     ENDIF
 
        IF ( num_tiles > 1 ) THEN
          write(0,*) 'CANNOT RUN WITH num_tiles > 1 !'
          STOP
        ENDIF
 
-     ! this sets the clear flag for the next time step if a history dump is occurring now
-     IF ( diag_flag_hist ) THEN
-       clear_history = .true.
-     ENDIF
-
   93  format(A,9(I3,2x))
 
 !       nxdg = ime-ims+1
 !       nydg = jme-jms+1
 !       nzdg = kme-kms+1
+
+        itssav=its
+        itesav=ite
+        jtssav=jts
+        jtesav=jte
 
        IF (channel) THEN
          its = max(i_start(1),ids)
@@ -207,6 +213,173 @@
         initmask(:,:,:) = 0
       ENDIF
 
+!         allocate( iontmp(ims:ime, kms:kme, jms:jme ) )
+
+!         iontmp(:,:,:) = sciona(:,:,:)
+
+           nt_sub = Max(1, Nint(dt/0.75) ) ! approx 1s sub time step
+
+     dt_sub = dt/nt_sub
+
+     DO it_sub = 1,nt_sub
+      IF ( wrf_dm_on_monitor() ) THEN
+       write(iunit,*) 'START ITERSUB ', it_sub
+      ENDIF
+      lgtstp = 0
+      loccur = 1
+      iter=0
+
+         
+        IF ( mp_physics == NSSL_2MOM ) THEN
+
+        CALL nssl_2mom_sed_driver(                          &
+                     ITIMESTEP=itimestep,                &
+                     TH=th,                              &
+                     QV=qv_curr,                         &
+                     QC=qc_curr,                         &
+                     QR=qr_curr,                         &
+                     QI=qi_curr,                         &
+                     QS=qs_curr,                         &
+                     QH=qg_curr,                         &
+                     QHL=qh_curr,                        &
+                     cn=qnn_curr,                        &
+                     CCW=qndrop_curr,                    &
+                     CRW=qnr_curr,                       &
+                     CCI=qni_curr,                       &
+                     CSW=qns_curr,                       &
+                     CHW=qng_curr,                       &
+                     CHL=qnh_curr,                       &
+                     SCR=scr,                            &
+                     SCW=scw,                            &
+                     SCI=sci,                            &
+                     SCS=scs,                            &
+                     SCH=sch,                            &
+                     SCHL=schl,                          &
+                     SCTOT=sctot,                        &
+                     NONINDUC = noninduc,                &
+                     rscghis_2d = rscghis_2d,            &
+                     INDUC = induc,                      & 
+                     ELECZ = elecz,                      & 
+                     SCIONA = sciona, f_sciona=f_sciona, & 
+                     scion = cion, f_scion=f_cnion,      &
+                     VHW=qvolg_curr, f_vhw=F_QVOLG,      &
+                     VHL=qvolh_curr, f_vhl=F_QVOLH,      &
+                     ZRW=qzr_curr,  f_zrw = f_qzr,       &
+                     ZHW=qzg_curr,  f_zhw = f_qzg,       &
+                     ZHL=qzh_curr,  f_zhl = f_qzh,       &
+                     PII=pi_phy,                         &
+                     P=p,                                &
+                     W=w,                                &
+                     DZ=dz8w,                            &
+                     dx=dx, dy=dy,                       &
+                     DTP=dt_sub,                         &
+                     DN=rho,                             &
+                     RAINNC   = RAINNC,                  &
+                     RAINNCV  = RAINNCV,                 &
+                     SNOWNC   = SNOWNC,                  &
+                     SNOWNCV  = SNOWNCV,                 &
+                     HAILNC   = HAILNC,                  &
+                     HAILNCV  = HAILNCV,                 &
+                     GRPLNC   = GRAUPELNC,               &
+                     GRPLNCV  = GRAUPELNCV,              &
+                     SR=SR,                              &
+                     diagflag = diagflag,                &
+                     ke_diag = ke_diag,                  &
+                     ipelectmp = ipelectmp,              &
+                     isedonly_in = 0,                    &
+                     lastloop = ( it_sub == nt_sub ),    &
+                     dbz      = refl_10cm,               &
+                     nssl_progn=nssl_progn,              &
+                     re_cloud=re_cloud,                  &
+                     re_ice=re_ice,                      &
+                     re_snow=re_snow,                    &
+                     has_reqc=has_reqc,                  & ! ala G. Thompson
+                     has_reqi=has_reqi,                  & ! ala G. Thompson
+                     has_reqs=has_reqs,                  & ! ala G. Thompson
+                     hail_maxk1=hail_maxk1,              &
+                     hail_max2d=hail_max2d,              &
+                     nwp_diagnostics=config_flags%nwp_diagnostics, &
+                  IDS=ids,IDE=ide, JDS=jds,JDE=jde, KDS=kds,KDE=kde, &
+                  IMS=ims,IME=ime, JMS=jms,JME=jme, KMS=kms,KME=kme, &
+                  ITS=itssav,ITE=itesav, JTS=jtssav,JTE=jtesav, KTS=kts,KTE=kte  &
+                             )
+
+!       CALL nssl_2mom_sed_driver(                       &
+!                    ITIMESTEP=itimestep,                &
+!                    TH=th,                              &
+!                    QV=qv_curr,                         &
+!                    QC=qc_curr,                         &
+!                    QR=qr_curr,                         &
+!                    QI=qi_curr,                         &
+!                    QS=qs_curr,                         &
+!                    QH=qg_curr,                         &
+!                    QHL=qh_curr,                        &
+!!                     cn=qnn_curr,                        &
+!                    CCW=qndrop_curr,                    &
+!                    CRW=qnr_curr,                       &
+!                    CCI=qni_curr,                       &
+!                    CSW=qns_curr,                       &
+!                    CHW=qng_curr,                       &
+!                    CHL=qnh_curr,                       &
+!                    SCR=scr,                            &
+!                    SCW=scw,                            &
+!                    SCI=sci,                            &
+!                    SCS=scs,                            &
+!                    SCH=sch,                            &
+!                    SCHL=schl,                          &
+!                    SCTOT=sctot,                        &
+!                    NONINDUC = noninduc,                &
+!                    rscghis_2d = rscghis_2d,            &
+!                    INDUC = induc,                      &
+!                    ELECZ = elecz,                      &
+!                    SCIONA = sciona, f_sciona=f_sciona, & 
+!                    scion = cion, f_scion=f_cnion,      &
+!                    VHW=qvolg_curr, f_vhw=F_QVOLG,      &
+!                    VHL=qvolh_curr, f_vhl=F_QVOLH,      &
+!                    ZRW=qzr_curr,  f_zrw = f_qzr,       &
+!                    ZHW=qzg_curr,  f_zhw = f_qzg,       &
+!                    ZHL=qzh_curr,  f_zhl = f_qzh,       &
+!                    cn=qnn_curr,  f_cn=f_qnn,           &
+!                    PII=pi_phy,                         &
+!                    P=p,                                &
+!                    W=w,                                &
+!                    DZ=dz8w,                            &
+!                    dx=dx, dy=dy,                       &
+!                    DTP=dt_sub,                         &
+!                    DN=rho,                             &
+!                    RAINNC   = RAINNC,                  &
+!                    RAINNCV  = RAINNCV,                 &
+!                    SNOWNC   = SNOWNC,                  &
+!                    SNOWNCV  = SNOWNCV,                 &
+!                    HAILNC   = HAILNC,                  &
+!                    HAILNCV  = HAILNCV,                 &
+!                    GRPLNC   = GRAUPELNC,               &
+!                    GRPLNCV  = GRAUPELNCV,              &
+!                    SR=SR,                              &
+!                    diagflag = diagflag,                &
+!                    ke_diag = ke_diag,                  &
+!                    ipelectmp = ipelectmp,              &
+!                    lastloop = ( it_sub == nt_sub ),    &
+!                    dbz      = refl_10cm,               &
+!                    nssl_progn=nssl_progn,              &
+!                    re_cloud=re_cloud,                  &
+!                    re_ice=re_ice,                      &
+!                    re_snow=re_snow,                    &
+!                    has_reqc=has_reqc,                  & ! ala G. Thompson
+!                    has_reqi=has_reqi,                  & ! ala G. Thompson
+!                    has_reqs=has_reqs,                  & ! ala G. Thompson
+!                 IDS=ids,IDE=ide, JDS=jds,JDE=jde, KDS=kds,KDE=kde, &
+!                 IMS=ims,IME=ime, JMS=jms,JME=jme, KMS=kms,KME=kme, &
+!                 ITS=itssav,ITE=itesav, JTS=jtssav,JTE=jtesav, KTS=kts,KTE=kte  &
+!                                                      )
+
+           ELSEIF (  mp_physics == FAST_KHAIN_LYNN_SHPUND ) THEN
+
+
+           ENDIF
+!
+! Start of lightning loop
+!
      DO WHILE (loccur > 0 .and. .not. lgtstp == 1 )
  105   iter=iter+1
 
@@ -328,6 +501,12 @@
          write(6,'(a,a,1pe13.5)') trim(flashtype),' energy: ',energynew - energyold
         ENDIF
        ENDIF
+
+        IF ( energyold .gt. 0.0 ) THEN
+          energy_diff = -(energynew - energyold)
+        ELSE
+          energy_diff = 0.
+        ENDIF
 
          energyold = energynew
 
@@ -581,6 +760,7 @@
 
        ENDDO ! while
 
+       ENDDO ! substep
 
 ! #if DM_PARALLEL
 #if ( defined(DM_PARALLEL)  &&   ! defined(STUBMPI) )
@@ -653,4 +833,8 @@
 
       ENDIF  !  ipelectmp.gt.1
 
+!        ionsource(ims:ime,kms:kme,jms:jme) =  ionsource(ims:ime,kms:kme,jms:jme) +  &
+!                    ( sciona(ims:ime,kms:kme,jms:jme) - iontmp(ims:ime,kms:kme,jms:jme) )
+
+!      deallocate( iontmp )
     ENDIF
