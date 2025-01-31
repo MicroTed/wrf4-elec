@@ -1494,7 +1494,7 @@
           northward_recv_size =                                               &
      &        (nxt + ngx * 2) *                                               &
      &        (ng)           *                                                &
-     &        (nzt + ngx * 2) *                                               &
+     &        (nzt + ngz * 2) *                                               &
      &        (na)
 
           IF (debug_mpi) THEN
