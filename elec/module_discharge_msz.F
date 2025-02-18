@@ -1807,6 +1807,8 @@
 !  (Number of iterations to find decenet channel and volume)
 !
       do it = 1,nttim-1
+      
+      nttimend(in) = it
 !
 !
 !  actual interpolation (mlint1 does tri-linear interpolation)
@@ -2038,10 +2040,10 @@
          .and. &
        ( ( trje(in,1,lez) >  10.e3 .and. trje(in,1,lpot) < -50.e6 .and. trje(in,it,lcharge) > chgmin ) .or.   &
          ( trje(in,1,lez) < -10.e3 .and. trje(in,1,lpot) >  50.e6 .and. trje(in,it,lcharge) < -chgmin ) ) ) then
-      IF ( ifoundic == 0 ) nttimend(in) = it
-      nttimendcg(in) = it
-      ichend(in) = 1 
-      go to 1999
+          IF ( ifoundic == 0 ) nttimend(in) = it
+          nttimendcg(in) = it
+          ichend(in) = 1 
+          go to 1999
       end if
 
       if ( trje(in,it,lemag2) .lt. estop(kc) .and. ifoundic == 0 ) then
@@ -2088,6 +2090,7 @@
 !
 !  Bound computed values....set it+1 values = it (for plotting purposes)
 !
+      IF ( it > 0 ) THEN
       trje(in,it+1,llz) = max(0.0,trje(in,it,llz))
       trje(in,it+1,llz) = min( z1d2(nz-1,1),trje(in,it,llz))
       trje(in,it+1,lly) = max(0.0,trje(in,it,lly))
@@ -2104,6 +2107,7 @@
       idxlgt(in,it+1,1) = idxlgt(in,it,1)
       idxlgt(in,it+1,2) = idxlgt(in,it,2)
       idxlgt(in,it+1,3) = idxlgt(in,it,3)
+      ENDIF
 !     
       IF ( ndebug > 1 ) THEN
 !      write(iunit,*) '==================================================='
@@ -2578,18 +2582,28 @@
 !
 !      isendn = idxlgt(ichneg,nttimend(ichneg),1) - igslg0 + 1
 !      jsendn = idxlgt(ichneg,nttimend(ichneg),2) - jgslg0 + 1
+      IF ( nttimend(ichneg) > 0 ) THEN
       isendn = idxlgt(ichneg,nttimend(ichneg),1)
       jsendn = idxlgt(ichneg,nttimend(ichneg),2)
       ksendn = idxlgt(ichneg,nttimend(ichneg),3)
+      ELSE
+       write(0,*) 'Bad value of nttimend(ichneg)! nttimend,ichneg = ',nttimend(ichneg),ichneg
+       stop
+      ENDIF
 !
 !  isendp, jsendp, ksendp are the indices of the lower left hand corner
 !  of the grid cell where the end of the positive channel is found.
 !
 !      isendp = idxlgt(ichpos,nttimend(ichpos),1) - igslg0 + 1
 !      jsendp = idxlgt(ichpos,nttimend(ichpos),2) - jgslg0 + 1
+      IF ( nttimend(ichpos) > 0 ) THEN
       isendp = idxlgt(ichpos,nttimend(ichpos),1)
       jsendp = idxlgt(ichpos,nttimend(ichpos),2)
       ksendp = idxlgt(ichpos,nttimend(ichpos),3)
+      ELSE
+       write(0,*) 'Bad value of nttimend(ichpos)! nttimend,ichpos = ',nttimend(ichpos),ichpos
+       stop
+      ENDIF
 !
 ! MPI: need to communicate the starting points for pos/neg branching regions
 
