@@ -24,7 +24,7 @@
      &  ,flshfedic,flshfedicp,flshfedicn,flshfedcg,flshfedcgp,flshfedcgn &
      &  ,flshi,flshn,flshp,lightmask,lightinit,initmask &
      &  ,eint,tgrnd,zgrnd &
-     &  ,f_clnox,ixbeg,jybeg,flashcount,clnox,kcldtop)
+     &  ,f_clnox,ixbeg,jybeg,flashcount,clnox,kcldtop,i_light,j_light)
      
 #ifdef DM_PARALLEL
       USE module_dm, ONLY : &
@@ -44,6 +44,7 @@
       
       integer, intent(IN) :: ids,ide,jds,jde,kds,kde,ims,ime,jms,jme,kms,kme,its,jts
       real, dimension(ims:ime, kms:kme, jms:jme), intent(in)::  temg
+      integer, intent(inout), optional :: i_light,j_light
       integer iunit,iunit0
       real elec(0:nx+1,nz,0:ny+1,4)
 !      real scion(0:nx+1,nz,0:ny+1,2)  ! 2=+, 1=- 
@@ -2708,70 +2709,71 @@
 !
       if ( icgyn .eq. 0 ) then
 
-      iic = 1
-      ilgt = 1
-      iredis = 1 ! ndisic
-      numic = numic + 1
-      numlgt = numlgt + 1
-      IF ( my_rank == 0 ) THEN
-      write(iunit,*) '      IC DISCHARGE'
-      write(iunit,*) '         TOTAL NUMBER OF ICs',numic
-      write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
-      ENDIF
-      IF ( isa .lt. 1 ) THEN
+        iic = 1
+        ilgt = 1
+        iredis = 1 ! ndisic
+        loccur = 1
+        numic = numic + 1
+        numlgt = numlgt + 1
+        IF ( my_rank == 0 ) THEN
+          write(iunit,*) '      IC DISCHARGE'
+          write(iunit,*) '         TOTAL NUMBER OF ICs',numic
+          write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
+        ENDIF
+        IF ( isa .lt. 1 ) THEN
 !      write(24,'(i5,a,f13.3,3x,i4)') nstep,' IC ', dtp*(nstep - 1),
 !     : iliter
-      ENDIF
+        ENDIF
 
       end if
 !
 
       if ( icgyn .eq. 1 ) then
 !
-      icg = 1
-      ilgt = 1
-      iredis = 1 ! ndiscg
-      numcg = numcg + 1
-      numlgt = numlgt + 1
-      IF ( my_rank == 0 ) THEN
-      write(iunit,*) '      CG DISCHARGE'
-      write(iunit,*) '         TOTAL NUMBER OF CGs',numcg
-      write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
-      ENDIF
+        icg = 1
+        ilgt = 1
+        iredis = 1 ! ndiscg
+        numcg = numcg + 1
+        numlgt = numlgt + 1
+        IF ( my_rank == 0 ) THEN
+          write(iunit,*) '      CG DISCHARGE'
+          write(iunit,*) '         TOTAL NUMBER OF CGs',numcg
+          write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
+        ENDIF
 !      icgyn = 1
 !
 !
-      if ( icgpn .eq. 1 ) then
-      iicp = 1
-      ilgt = 1
-      loccur = 3
-      numcgp = numcgp + 1
-      IF ( my_rank == 0 ) THEN
-      write(iunit,*) '      DISCHARGE IS POSITIVE'
-      write(iunit,*) '         TOTAL NUMBER OF CGPs',numcgp
-      write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
-      ENDIF
-      IF ( isa .lt. 1 ) THEN
-!        write(24,'(i5,a,f13.3,3x,i4)') nstep,' CG POS ', 
-!     :  dtp*(nstep - 1), iliter
-      ENDIF
+       if ( icgpn .eq. 1 ) then
+         iicp = 1
+         ilgt = 1
+         loccur = 3
+         numcgp = numcgp + 1
+         IF ( my_rank == 0 ) THEN
+           write(iunit,*) '      DISCHARGE IS POSITIVE'
+           write(iunit,*) '         TOTAL NUMBER OF CGPs',numcgp
+           write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
+         ENDIF
+         IF ( isa .lt. 1 ) THEN
+!         write(24,'(i5,a,f13.3,3x,i4)') nstep,' CG POS ', 
+!      :  dtp*(nstep - 1), iliter
+         ENDIF
 !      end if
 !
-      elseif ( icgpn .eq. -1 ) then
-      iicn = 1
-      ilgt = 1
-      loccur = 2
-      numcgn = numcgn + 1
-      IF ( my_rank == 0 ) THEN
-      write(iunit,*) '      DISCHARGE IS NEGATIVE'
-      write(iunit,*) '         TOTAL NUMBER OF CGNs',numcgn
-      write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
-      ENDIF
-      IF ( isa .lt. 1 ) THEN
-!       write(24,'(i5,a,f13.3,3x,i4)') nstep,' CG NEG ', dtp*(nstep - 1),
-!     : iliter
-      ENDIF
-      end if
+       elseif ( icgpn .eq. -1 ) then
+         iicn = 1
+         ilgt = 1
+         loccur = 2
+         numcgn = numcgn + 1
+         IF ( my_rank == 0 ) THEN
+            write(iunit,*) '      DISCHARGE IS NEGATIVE'
+            write(iunit,*) '         TOTAL NUMBER OF CGNs',numcgn
+            write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
+         ENDIF
+         IF ( isa .lt. 1 ) THEN
+!        write(24,'(i5,a,f13.3,3x,i4)') nstep,' CG NEG ', dtp*(nstep - 1),
+!       : iliter
+         ENDIF
+       end if
 !
       end if  ! ( icgyn.eq.1 ) 
 
@@ -2942,6 +2944,7 @@
 !      if ( iterst .gt. niter ) then
       write(iunit,*) 'Cant find enough points..try a new starting point'
       ENDIF
+      ! loccur = 0
       
        sizetest = 0
       
@@ -2960,6 +2963,7 @@
 !      if ( iterst .gt. niter ) then
       write(iunit,*) 'Cant find enough points..try a new starting point'
       ENDIF
+      ! loccur = 0
 
        sizetest = 0
 
@@ -3862,18 +3866,18 @@
       do jy = 1,jye !ny-1
       do ix = 1,ixe ! nx-1
        dv = dxx*dyy*dzz(ix,kz,jy)
-       IF (t4(ix,jy,kz) .lt. -1.0e-18) THEN
+       IF (t4(ix,jy,kz) .lt. -1.0e-18 .and. scdisch0(ix,jy,kz) /= 0.0) THEN
         qpxn = qpxn + (its+ix-0.5)*dx*scdisch(ix,jy,kz)*dv  ! fix "ix" and "jy" for MPI
         qpyn = qpyn + (jts+jy-0.5)*dy*scdisch(ix,jy,kz)*dv
         qpzn = qpzn +     &
-     &         z1d2(kz,1)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
+     &         zlev(kz,ix,jy)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
         qnetn = qnetn + scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
         npntn = npntn + 1
-       ELSEIF (t4(ix,jy,kz) .gt. 1.0e-18) THEN
+       ELSEIF (t4(ix,jy,kz) .gt. 1.0e-18 .and. scdisch0(ix,jy,kz) /= 0.0) THEN
         qpxp = qpxp + (its+ix-0.5)*dx*scdisch(ix,jy,kz)*dv
         qpyp = qpyp + (jts+jy-0.5)*dy*scdisch(ix,jy,kz)*dv
         qpzp = qpzp +     &
-     &         z1d2(kz,1)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
+     &         zlev(kz,ix,jy)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
         qnetp = qnetp + scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
         npntp = npntp + 1
        END IF
@@ -3963,9 +3967,9 @@
       ENDIF
 
         write(iunit,'(a,3(1x,f12.5))') 'pos. drho center (x,y,z) ',    &
-     &    qpxcp,qpycp,qpzcp   
+     &    qpxcp,qpycp,qpzcp
         write(iunit,'(a,3(1x,f12.5))') 'neg. drho center (x,y,z) ',    &
-     &    qpxcn,qpycn,qpzcn   
+     &    qpxcn,qpycn,qpzcn
 
       IF ( isa .lt. 1 ) THEN
 !        write(24,'(a,3(1x,f12.5))') 'pos. drho center (x,y,z) ',
@@ -4132,7 +4136,7 @@
 !        qpzn = qpzn + (float(kz)-0.5)*scdisch(ix,jy,kz)
 
         qpzn = qpzn +     &
-     &         z1d2(kz,1)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
+     &         zlev(kz,ix,jy)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
 
         qnetn = qnetn + scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
         npntn = npntn + 1
@@ -4143,7 +4147,7 @@
 !        qpzn = qpzn + (float(kz)-0.5)*scdisch(ix,jy,kz)
 
         qpzn = qpzn +     &
-     &         z1d2(kz,1)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
+     &         zlev(kz,ix,jy)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
 
         qnetn = qnetn + scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
         npntn = npntn + 1
@@ -4621,6 +4625,16 @@
            flashcount = flashcount + 1
             flshi(islgt_local,kslgt_local,jslgt_local) = flshi(islgt_local,kslgt_local,jslgt_local) + 1
        ENDIF
+
+      IF ( present(i_light) .and. present(j_light) ) THEN
+      IF ( my_rank == ichooserank ) THEN
+        i_light = ixst
+        j_light = jyst
+      ELSE
+        i_light = 0
+        j_light = 0
+      ENDIF
+      ENDIF
 
       IF  ( ilgt .ge. 1 ) THEN
         loccur = Max(1, loccur)

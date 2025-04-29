@@ -208,6 +208,7 @@
       
       lgtstp = 0
       loccur = 1
+      ltgtype = 0
       flashcount = 0
       IF ( idischarge == 2 ) THEN
         initmask(:,:,:) = 0
@@ -227,6 +228,7 @@
       ENDIF
       lgtstp = 0
       loccur = 1
+      ltgtype = 0
       iter=0
 
          
@@ -500,6 +502,9 @@
         IF ( one_flash_at_a_time ) THEN
          write(6,'(a,a,1pe13.5)') trim(flashtype),' energy: ',energynew - energyold
         ENDIF
+        IF ( ltgtype > 0 .and. energychange > 0. ) THEN
+          write(6,'(a)') " WARNING: Lightning increased the total energy"
+        ENDIF
        ENDIF
 
         IF ( energyold .gt. 0.0 ) THEN
@@ -542,6 +547,7 @@
        elecmag(:,:,:)=elec(:,:,:,4)
        loccur = 0
        lgtstp = 0
+       ltgtype = 0
        
 #if DM_PARALLEL
 !         dt4 = MPI_Wtime()
@@ -549,10 +555,9 @@
 #endif
        
        
-!       IF ( (mp_physics == NSSL_2MOM .or. mp_physics == NSSL_2MOMCCN ) .and. elec_physics > 0 ) THEN
        IF ( idischarge == 1 ) THEN
 
-!    Ziegler and MacGorman (1994,JAS) simple column discharge within cylinders
+!    Ziegler and MacGorman (1994,JAS)/Fierro et al. (2013) simple column discharge within cylinders
 
 !        write(0,*) 'call light1d: ngx1+its:its+nxslm+ngx1,jts+ngy1:nyslm+ngy1+jts = ', &
 !                ngx1+its,its+nxslm+ngx1,jts+ngy1,nyslm+ngy1+jts
@@ -681,16 +686,19 @@
         cnoxall = cnoxall + cnoxtot
         flashtype = 'No Flash'
         IF ( loccur == 1 ) THEN
+           ltgtype = 1
            numic = numic + 1
            cnoxic = cnoxic + cnoxtot
            flashtype = 'IC flash'
         ENDIF
         IF ( loccur == 2 ) THEN
+           ltgtype = 2
            numcgn = numcgn + 1
            cnoxcg = cnoxcg + cnoxtot
            flashtype = 'Neg. CG flash'
         ENDIF
         IF ( loccur == 3 ) THEN
+           ltgtype = 3
            numcgp = numcgp + 1
            cnoxcg = cnoxcg + cnoxtot
            flashtype = 'Pos. CG flash'

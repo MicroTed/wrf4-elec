@@ -890,7 +890,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 
 #ifdef WRF_ELEC
 ! Explicit lightning
-   integer l,iter,itersub,lgtstp,loccur,nxdg,nydg,nzdg
+   integer l,iter,itersub,lgtstp,loccur,ltgtype,nxdg,nydg,nzdg
    character*40 :: flashtype
    integer, save :: numic,numcgp,numcgn
    double precision, save :: cnoxtot=0,cnoxall=0,cnoxic=0,cnoxcg=0
