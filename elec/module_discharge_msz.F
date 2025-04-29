@@ -1689,7 +1689,7 @@
         temp = mpitotin(5)
 
       IF ( my_rank == 0 ) THEN
-      write(iunit,'(a,3(1x,i3))') 'Picked starting point ',i1+ioffset,j1+joffset,k1+koffset
+      write(iunit,'(a,3(1x,i5))') 'Picked starting point ',i1+ioffset,j1+joffset,k1+koffset
       ENDIF
 
 
