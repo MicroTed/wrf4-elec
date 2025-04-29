@@ -21,6 +21,7 @@
       light(:,:) = 0.
       lightdis(:,:) = 0.
       lightdens(:,:) = 0.
+!      ionsource(:,:,:) = 0.0
       induc(:,:,:) = 0.0
       noninduc(:,:,:) = 0.0
        IF ( idischarge == 1 ) THEN
@@ -38,22 +39,27 @@
        ENDIF
       
      endif
+     
+     ! this sets the clear flag for the next time step if a history dump is occurring now
+     IF ( diag_flag_hist ) THEN
+       clear_history = .true.
+     ENDIF
 
        IF ( num_tiles > 1 ) THEN
          write(0,*) 'CANNOT RUN WITH num_tiles > 1 !'
          STOP
        ENDIF
 
-     ! this sets the clear flag for the next time step if a history dump is occurring now
-     IF ( diag_flag_hist ) THEN
-       clear_history = .true.
-     ENDIF
-
   93  format(A,9(I3,2x))
 
 !       nxdg = ime-ims+1
 !       nydg = jme-jms+1
 !       nzdg = kme-kms+1
+
+        itssav=its
+        itesav=ite
+        jtssav=jts
+        jtesav=jte
 
        IF (channel) THEN
          its = max(i_start(1),ids)
@@ -95,6 +101,20 @@
        write(0,*) 'nbw,nbe,nbs,nbn = ',nbw,nbe,nbs,nbn
        ENDIF
 
+       IF ( mpi_setup_flag < 0 ) THEN
+         CALL TASK_PROC_MAP()
+
+         IF ( irealmpitype == mpi_real ) THEN
+           write(0,*) 'irealmpitype = ',irealmpitype,' = mpi_real'
+         ELSEIF ( irealmpitype == mpi_double_precision ) THEN
+           write(0,*) 'irealmpitype = ',mpi_double_precision, ' = mpi_double_precision'
+         ELSE
+           write(0,*) 'irealmpitype not correctly defined'
+           WRITE( wrf_err_message , * ) 'WRF-ELEC: irealmpitype not correctly defined. Stop. '
+           CALL wrf_error_fatal ( wrf_err_message )
+         ENDIF
+
+       ENDIF
 
        ngx1 = -ims0 ! ips - ims - 1
        ngx2 = ime - ite
@@ -188,11 +208,180 @@
       
       lgtstp = 0
       loccur = 1
+      ltgtype = 0
       flashcount = 0
       IF ( idischarge == 2 ) THEN
         initmask(:,:,:) = 0
       ENDIF
 
+!         allocate( iontmp(ims:ime, kms:kme, jms:jme ) )
+
+!         iontmp(:,:,:) = sciona(:,:,:)
+
+           nt_sub = Max(1, Nint(dt/0.75) ) ! approx 1s sub time step
+
+     dt_sub = dt/nt_sub
+
+     DO it_sub = 1,nt_sub
+      IF ( wrf_dm_on_monitor() ) THEN
+       write(iunit,*) 'START ITERSUB ', it_sub
+      ENDIF
+      lgtstp = 0
+      loccur = 1
+      ltgtype = 0
+      iter=0
+
+         
+        IF ( mp_physics == NSSL_2MOM ) THEN
+
+        CALL nssl_2mom_sed_driver(                          &
+                     ITIMESTEP=itimestep,                &
+                     TH=th,                              &
+                     QV=qv_curr,                         &
+                     QC=qc_curr,                         &
+                     QR=qr_curr,                         &
+                     QI=qi_curr,                         &
+                     QS=qs_curr,                         &
+                     QH=qg_curr,                         &
+                     QHL=qh_curr,                        &
+                     cn=qnn_curr,                        &
+                     CCW=qndrop_curr,                    &
+                     CRW=qnr_curr,                       &
+                     CCI=qni_curr,                       &
+                     CSW=qns_curr,                       &
+                     CHW=qng_curr,                       &
+                     CHL=qnh_curr,                       &
+                     SCR=scr,                            &
+                     SCW=scw,                            &
+                     SCI=sci,                            &
+                     SCS=scs,                            &
+                     SCH=sch,                            &
+                     SCHL=schl,                          &
+                     SCTOT=sctot,                        &
+                     NONINDUC = noninduc,                &
+                     rscghis_2d = rscghis_2d,            &
+                     INDUC = induc,                      & 
+                     ELECZ = elecz,                      & 
+                     SCIONA = sciona, f_sciona=f_sciona, & 
+                     scion = cion, f_scion=f_cnion,      &
+                     VHW=qvolg_curr, f_vhw=F_QVOLG,      &
+                     VHL=qvolh_curr, f_vhl=F_QVOLH,      &
+                     ZRW=qzr_curr,  f_zrw = f_qzr,       &
+                     ZHW=qzg_curr,  f_zhw = f_qzg,       &
+                     ZHL=qzh_curr,  f_zhl = f_qzh,       &
+                     PII=pi_phy,                         &
+                     P=p,                                &
+                     W=w,                                &
+                     DZ=dz8w,                            &
+                     dx=dx, dy=dy,                       &
+                     DTP=dt_sub,                         &
+                     DN=rho,                             &
+                     RAINNC   = RAINNC,                  &
+                     RAINNCV  = RAINNCV,                 &
+                     SNOWNC   = SNOWNC,                  &
+                     SNOWNCV  = SNOWNCV,                 &
+                     HAILNC   = HAILNC,                  &
+                     HAILNCV  = HAILNCV,                 &
+                     GRPLNC   = GRAUPELNC,               &
+                     GRPLNCV  = GRAUPELNCV,              &
+                     SR=SR,                              &
+                     diagflag = diagflag,                &
+                     ke_diag = ke_diag,                  &
+                     ipelectmp = ipelectmp,              &
+                     isedonly_in = 0,                    &
+                     lastloop = ( it_sub == nt_sub ),    &
+                     dbz      = refl_10cm,               &
+                     nssl_progn=nssl_progn,              &
+                     re_cloud=re_cloud,                  &
+                     re_ice=re_ice,                      &
+                     re_snow=re_snow,                    &
+                     has_reqc=has_reqc,                  & ! ala G. Thompson
+                     has_reqi=has_reqi,                  & ! ala G. Thompson
+                     has_reqs=has_reqs,                  & ! ala G. Thompson
+                     hail_maxk1=hail_maxk1,              &
+                     hail_max2d=hail_max2d,              &
+                     nwp_diagnostics=config_flags%nwp_diagnostics, &
+                  IDS=ids,IDE=ide, JDS=jds,JDE=jde, KDS=kds,KDE=kde, &
+                  IMS=ims,IME=ime, JMS=jms,JME=jme, KMS=kms,KME=kme, &
+                  ITS=itssav,ITE=itesav, JTS=jtssav,JTE=jtesav, KTS=kts,KTE=kte  &
+                             )
+
+!       CALL nssl_2mom_sed_driver(                       &
+!                    ITIMESTEP=itimestep,                &
+!                    TH=th,                              &
+!                    QV=qv_curr,                         &
+!                    QC=qc_curr,                         &
+!                    QR=qr_curr,                         &
+!                    QI=qi_curr,                         &
+!                    QS=qs_curr,                         &
+!                    QH=qg_curr,                         &
+!                    QHL=qh_curr,                        &
+!!                     cn=qnn_curr,                        &
+!                    CCW=qndrop_curr,                    &
+!                    CRW=qnr_curr,                       &
+!                    CCI=qni_curr,                       &
+!                    CSW=qns_curr,                       &
+!                    CHW=qng_curr,                       &
+!                    CHL=qnh_curr,                       &
+!                    SCR=scr,                            &
+!                    SCW=scw,                            &
+!                    SCI=sci,                            &
+!                    SCS=scs,                            &
+!                    SCH=sch,                            &
+!                    SCHL=schl,                          &
+!                    SCTOT=sctot,                        &
+!                    NONINDUC = noninduc,                &
+!                    rscghis_2d = rscghis_2d,            &
+!                    INDUC = induc,                      &
+!                    ELECZ = elecz,                      &
+!                    SCIONA = sciona, f_sciona=f_sciona, & 
+!                    scion = cion, f_scion=f_cnion,      &
+!                    VHW=qvolg_curr, f_vhw=F_QVOLG,      &
+!                    VHL=qvolh_curr, f_vhl=F_QVOLH,      &
+!                    ZRW=qzr_curr,  f_zrw = f_qzr,       &
+!                    ZHW=qzg_curr,  f_zhw = f_qzg,       &
+!                    ZHL=qzh_curr,  f_zhl = f_qzh,       &
+!                    cn=qnn_curr,  f_cn=f_qnn,           &
+!                    PII=pi_phy,                         &
+!                    P=p,                                &
+!                    W=w,                                &
+!                    DZ=dz8w,                            &
+!                    dx=dx, dy=dy,                       &
+!                    DTP=dt_sub,                         &
+!                    DN=rho,                             &
+!                    RAINNC   = RAINNC,                  &
+!                    RAINNCV  = RAINNCV,                 &
+!                    SNOWNC   = SNOWNC,                  &
+!                    SNOWNCV  = SNOWNCV,                 &
+!                    HAILNC   = HAILNC,                  &
+!                    HAILNCV  = HAILNCV,                 &
+!                    GRPLNC   = GRAUPELNC,               &
+!                    GRPLNCV  = GRAUPELNCV,              &
+!                    SR=SR,                              &
+!                    diagflag = diagflag,                &
+!                    ke_diag = ke_diag,                  &
+!                    ipelectmp = ipelectmp,              &
+!                    lastloop = ( it_sub == nt_sub ),    &
+!                    dbz      = refl_10cm,               &
+!                    nssl_progn=nssl_progn,              &
+!                    re_cloud=re_cloud,                  &
+!                    re_ice=re_ice,                      &
+!                    re_snow=re_snow,                    &
+!                    has_reqc=has_reqc,                  & ! ala G. Thompson
+!                    has_reqi=has_reqi,                  & ! ala G. Thompson
+!                    has_reqs=has_reqs,                  & ! ala G. Thompson
+!                 IDS=ids,IDE=ide, JDS=jds,JDE=jde, KDS=kds,KDE=kde, &
+!                 IMS=ims,IME=ime, JMS=jms,JME=jme, KMS=kms,KME=kme, &
+!                 ITS=itssav,ITE=itesav, JTS=jtssav,JTE=jtesav, KTS=kts,KTE=kte  &
+!                                                      )
+
+           ELSEIF (  mp_physics == FAST_KHAIN_LYNN_SHPUND ) THEN
+
+
+           ENDIF
+!
+! Start of lightning loop
+!
      DO WHILE (loccur > 0 .and. .not. lgtstp == 1 )
  105   iter=iter+1
 
@@ -313,7 +502,16 @@
         IF ( one_flash_at_a_time ) THEN
          write(6,'(a,a,1pe13.5)') trim(flashtype),' energy: ',energynew - energyold
         ENDIF
+        IF ( ltgtype > 0 .and. energychange > 0. ) THEN
+          write(6,'(a)') " WARNING: Lightning increased the total energy"
+        ENDIF
        ENDIF
+
+        IF ( energyold .gt. 0.0 ) THEN
+          energy_diff = -(energynew - energyold)
+        ELSE
+          energy_diff = 0.
+        ENDIF
 
          energyold = energynew
 
@@ -349,6 +547,7 @@
        elecmag(:,:,:)=elec(:,:,:,4)
        loccur = 0
        lgtstp = 0
+       ltgtype = 0
        
 #if DM_PARALLEL
 !         dt4 = MPI_Wtime()
@@ -356,10 +555,9 @@
 #endif
        
        
-!       IF ( (mp_physics == NSSL_2MOM .or. mp_physics == NSSL_2MOMCCN ) .and. elec_physics > 0 ) THEN
        IF ( idischarge == 1 ) THEN
 
-!    Ziegler and MacGorman (1994,JAS) simple column discharge within cylinders
+!    Ziegler and MacGorman (1994,JAS)/Fierro et al. (2013) simple column discharge within cylinders
 
 !        write(0,*) 'call light1d: ngx1+its:its+nxslm+ngx1,jts+ngy1:nyslm+ngy1+jts = ', &
 !                ngx1+its,its+nxslm+ngx1,jts+ngy1,nyslm+ngy1+jts
@@ -488,16 +686,19 @@
         cnoxall = cnoxall + cnoxtot
         flashtype = 'No Flash'
         IF ( loccur == 1 ) THEN
+           ltgtype = 1
            numic = numic + 1
            cnoxic = cnoxic + cnoxtot
            flashtype = 'IC flash'
         ENDIF
         IF ( loccur == 2 ) THEN
+           ltgtype = 2
            numcgn = numcgn + 1
            cnoxcg = cnoxcg + cnoxtot
            flashtype = 'Neg. CG flash'
         ENDIF
         IF ( loccur == 3 ) THEN
+           ltgtype = 3
            numcgp = numcgp + 1
            cnoxcg = cnoxcg + cnoxtot
            flashtype = 'Pos. CG flash'
@@ -551,7 +752,7 @@
 !       sci(i,k,j)=0.95*sci(i,k,j)
 !       scs(i,k,j)=0.95*scs(i,k,j)
 !       if (f_schl) schl(i,k,j)=0.95*schl(i,k,j)
-        sciona(i,k,j) = sciona(i,k,j) - 0.05*sctot(i,k,j)
+        IF ( f_sciona ) sciona(i,k,j) = sciona(i,k,j) - 0.05*sctot(i,k,j)
         sctot(i,k,j)  = sctot(i,k,j)  - 0.05*sctot(i,k,j)
        enddo
        enddo
@@ -567,6 +768,7 @@
 
        ENDDO ! while
 
+       ENDDO ! substep
 
 ! #if DM_PARALLEL
 #if ( defined(DM_PARALLEL)  &&   ! defined(STUBMPI) )
@@ -584,7 +786,7 @@
 !           of lightning (iter == 1)
 !       Also should update sctot after the screening charge application.
 
-      IF ( iscreen .ge. 1  ) THEN 
+      IF ( iscreen .ge. 1 .and. f_sciona ) THEN 
       
 !      write(0,*) 'call screen'
 
@@ -639,4 +841,8 @@
 
       ENDIF  !  ipelectmp.gt.1
 
+!        ionsource(ims:ime,kms:kme,jms:jme) =  ionsource(ims:ime,kms:kme,jms:jme) +  &
+!                    ( sciona(ims:ime,kms:kme,jms:jme) - iontmp(ims:ime,kms:kme,jms:jme) )
+
+!      deallocate( iontmp )
     ENDIF

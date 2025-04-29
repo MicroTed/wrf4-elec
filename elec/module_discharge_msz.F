@@ -1,5 +1,5 @@
 !
-#define FLOAT_PRECISION MPI_DOUBLE_PRECISION
+! #define FLOAT_PRECISION MPI_DOUBLE_PRECISION
 
       Module  module_discharge_msz
 #ifdef DM_PARALLEL
@@ -24,7 +24,7 @@
      &  ,flshfedic,flshfedicp,flshfedicn,flshfedcg,flshfedcgp,flshfedcgn &
      &  ,flshi,flshn,flshp,lightmask,lightinit,initmask &
      &  ,eint,tgrnd,zgrnd &
-     &  ,f_clnox,ixbeg,jybeg,flashcount,clnox,kcldtop)
+     &  ,f_clnox,ixbeg,jybeg,flashcount,clnox,kcldtop,i_light,j_light)
      
 #ifdef DM_PARALLEL
       USE module_dm, ONLY : &
@@ -44,6 +44,7 @@
       
       integer, intent(IN) :: ids,ide,jds,jde,kds,kde,ims,ime,jms,jme,kms,kme,its,jts
       real, dimension(ims:ime, kms:kme, jms:jme), intent(in)::  temg
+      integer, intent(inout), optional :: i_light,j_light
       integer iunit,iunit0
       real elec(0:nx+1,nz,0:ny+1,4)
 !      real scion(0:nx+1,nz,0:ny+1,2)  ! 2=+, 1=- 
@@ -1212,7 +1213,7 @@
       mxmn_size = nz1
 
 ! find out the max emag at each level, and which processor it is on
-      CALL MPI_Allreduce(exyz_send_buffer, exyz_recv_buffer, mxmn_size, MPI_REAL,  &
+      CALL MPI_Allreduce(exyz_send_buffer, exyz_recv_buffer, mxmn_size, irealmpitype,  &
      &                  MPI_MAX, local_communicator, mpi_error_code)
 
       IF (mpi_error_code /= MPI_SUCCESS) THEN
@@ -1272,8 +1273,8 @@
       exyz_send_size = nz1*3
       exyz_recv_size = nz1*3
 
-      CALL MPI_Gather(exyz_send_buffer,exyz_send_size,MPI_REAL,  &
-     &               exyz_recv_buffer,exyz_recv_size,MPI_REAL,   &
+      CALL MPI_Gather(exyz_send_buffer,exyz_send_size,irealmpitype,  &
+     &               exyz_recv_buffer,exyz_recv_size,irealmpitype,   &
      &               0,local_communicator,mpi_error_code)
 
       IF (mpi_error_code /= MPI_SUCCESS) THEN
@@ -1679,7 +1680,7 @@
        NLzchoose = ichoose_send_buffer(9)
 
 #ifdef MPI
-       CALL MPI_Bcast(mpitotin, 5, MPI_REAL, ichooserank, local_communicator, mpi_error_code)
+       CALL MPI_Bcast(mpitotin, 5, irealmpitype, ichooserank, local_communicator, mpi_error_code)
 #endif
         emag = mpitotin(1)
         ez = mpitotin(2)
@@ -1807,6 +1808,8 @@
 !  (Number of iterations to find decenet channel and volume)
 !
       do it = 1,nttim-1
+      
+      nttimend(in) = it
 !
 !
 !  actual interpolation (mlint1 does tri-linear interpolation)
@@ -2038,10 +2041,10 @@
          .and. &
        ( ( trje(in,1,lez) >  10.e3 .and. trje(in,1,lpot) < -50.e6 .and. trje(in,it,lcharge) > chgmin ) .or.   &
          ( trje(in,1,lez) < -10.e3 .and. trje(in,1,lpot) >  50.e6 .and. trje(in,it,lcharge) < -chgmin ) ) ) then
-      IF ( ifoundic == 0 ) nttimend(in) = it
-      nttimendcg(in) = it
-      ichend(in) = 1 
-      go to 1999
+          IF ( ifoundic == 0 ) nttimend(in) = it
+          nttimendcg(in) = it
+          ichend(in) = 1 
+          go to 1999
       end if
 
       if ( trje(in,it,lemag2) .lt. estop(kc) .and. ifoundic == 0 ) then
@@ -2088,6 +2091,7 @@
 !
 !  Bound computed values....set it+1 values = it (for plotting purposes)
 !
+      IF ( it > 0 ) THEN
       trje(in,it+1,llz) = max(0.0,trje(in,it,llz))
       trje(in,it+1,llz) = min( z1d2(nz-1,1),trje(in,it,llz))
       trje(in,it+1,lly) = max(0.0,trje(in,it,lly))
@@ -2104,6 +2108,7 @@
       idxlgt(in,it+1,1) = idxlgt(in,it,1)
       idxlgt(in,it+1,2) = idxlgt(in,it,2)
       idxlgt(in,it+1,3) = idxlgt(in,it,3)
+      ENDIF
 !     
       IF ( ndebug > 1 ) THEN
 !      write(iunit,*) '==================================================='
@@ -2149,7 +2154,7 @@
 
        ! send trje info to all processors
         n = nenum*nttim*ninfo
-        CALL MPI_Bcast(trje, n, MPI_REAL, ichooserank, my_comm, mpi_error_code)
+        CALL MPI_Bcast(trje, n, irealmpitype, ichooserank, my_comm, mpi_error_code)
 
 ! idxlgt(nenum,nttim,3)       
         n = nenum*nttim*3
@@ -2163,11 +2168,11 @@
 !        
 !         westward_tag = 10
 !         IF ( my_rank == ichooserank ) THEN
-!           Call MPI_Send(trje, n, MPI_REAL, 0, westward_tag, local_communicator, mpi_error_code)
+!           Call MPI_Send(trje, n, irealmpitype, 0, westward_tag, local_communicator, mpi_error_code)
 !         ENDIF
 
          IF ( my_rank == 0 .and. ndebug > 1 ) THEN
-!           Call MPI_Recv(trje, n, MPI_REAL, ichooserank, westward_tag, local_communicator, my_mpi_status, mpi_error_code)
+!           Call MPI_Recv(trje, n, irealmpitype, ichooserank, westward_tag, local_communicator, my_mpi_status, mpi_error_code)
       DO in = 1,nenum
        it = nttimend(in)
 !      write(iunit,*) '==================================================='
@@ -2578,18 +2583,28 @@
 !
 !      isendn = idxlgt(ichneg,nttimend(ichneg),1) - igslg0 + 1
 !      jsendn = idxlgt(ichneg,nttimend(ichneg),2) - jgslg0 + 1
+      IF ( nttimend(ichneg) > 0 ) THEN
       isendn = idxlgt(ichneg,nttimend(ichneg),1)
       jsendn = idxlgt(ichneg,nttimend(ichneg),2)
       ksendn = idxlgt(ichneg,nttimend(ichneg),3)
+      ELSE
+       write(0,*) 'Bad value of nttimend(ichneg)! nttimend,ichneg = ',nttimend(ichneg),ichneg
+       stop
+      ENDIF
 !
 !  isendp, jsendp, ksendp are the indices of the lower left hand corner
 !  of the grid cell where the end of the positive channel is found.
 !
 !      isendp = idxlgt(ichpos,nttimend(ichpos),1) - igslg0 + 1
 !      jsendp = idxlgt(ichpos,nttimend(ichpos),2) - jgslg0 + 1
+      IF ( nttimend(ichpos) > 0 ) THEN
       isendp = idxlgt(ichpos,nttimend(ichpos),1)
       jsendp = idxlgt(ichpos,nttimend(ichpos),2)
       ksendp = idxlgt(ichpos,nttimend(ichpos),3)
+      ELSE
+       write(0,*) 'Bad value of nttimend(ichpos)! nttimend,ichpos = ',nttimend(ichpos),ichpos
+       stop
+      ENDIF
 !
 ! MPI: need to communicate the starting points for pos/neg branching regions
 
@@ -2638,7 +2653,7 @@
 
        k = 14
        
-       CALL MPI_Bcast(rchoose_send_buffer, k, MPI_REAL, ichooserank, local_communicator, mpi_error_code)
+       CALL MPI_Bcast(rchoose_send_buffer, k, irealmpitype, ichooserank, local_communicator, mpi_error_code)
 
        IF ( my_rank /= ichooserank ) THEN
        isendn = Nint( rchoose_send_buffer(1) )
@@ -2694,70 +2709,71 @@
 !
       if ( icgyn .eq. 0 ) then
 
-      iic = 1
-      ilgt = 1
-      iredis = 1 ! ndisic
-      numic = numic + 1
-      numlgt = numlgt + 1
-      IF ( my_rank == 0 ) THEN
-      write(iunit,*) '      IC DISCHARGE'
-      write(iunit,*) '         TOTAL NUMBER OF ICs',numic
-      write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
-      ENDIF
-      IF ( isa .lt. 1 ) THEN
+        iic = 1
+        ilgt = 1
+        iredis = 1 ! ndisic
+        loccur = 1
+        numic = numic + 1
+        numlgt = numlgt + 1
+        IF ( my_rank == 0 ) THEN
+          write(iunit,*) '      IC DISCHARGE'
+          write(iunit,*) '         TOTAL NUMBER OF ICs',numic
+          write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
+        ENDIF
+        IF ( isa .lt. 1 ) THEN
 !      write(24,'(i5,a,f13.3,3x,i4)') nstep,' IC ', dtp*(nstep - 1),
 !     : iliter
-      ENDIF
+        ENDIF
 
       end if
 !
 
       if ( icgyn .eq. 1 ) then
 !
-      icg = 1
-      ilgt = 1
-      iredis = 1 ! ndiscg
-      numcg = numcg + 1
-      numlgt = numlgt + 1
-      IF ( my_rank == 0 ) THEN
-      write(iunit,*) '      CG DISCHARGE'
-      write(iunit,*) '         TOTAL NUMBER OF CGs',numcg
-      write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
-      ENDIF
+        icg = 1
+        ilgt = 1
+        iredis = 1 ! ndiscg
+        numcg = numcg + 1
+        numlgt = numlgt + 1
+        IF ( my_rank == 0 ) THEN
+          write(iunit,*) '      CG DISCHARGE'
+          write(iunit,*) '         TOTAL NUMBER OF CGs',numcg
+          write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
+        ENDIF
 !      icgyn = 1
 !
 !
-      if ( icgpn .eq. 1 ) then
-      iicp = 1
-      ilgt = 1
-      loccur = 3
-      numcgp = numcgp + 1
-      IF ( my_rank == 0 ) THEN
-      write(iunit,*) '      DISCHARGE IS POSITIVE'
-      write(iunit,*) '         TOTAL NUMBER OF CGPs',numcgp
-      write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
-      ENDIF
-      IF ( isa .lt. 1 ) THEN
-!        write(24,'(i5,a,f13.3,3x,i4)') nstep,' CG POS ', 
-!     :  dtp*(nstep - 1), iliter
-      ENDIF
+       if ( icgpn .eq. 1 ) then
+         iicp = 1
+         ilgt = 1
+         loccur = 3
+         numcgp = numcgp + 1
+         IF ( my_rank == 0 ) THEN
+           write(iunit,*) '      DISCHARGE IS POSITIVE'
+           write(iunit,*) '         TOTAL NUMBER OF CGPs',numcgp
+           write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
+         ENDIF
+         IF ( isa .lt. 1 ) THEN
+!         write(24,'(i5,a,f13.3,3x,i4)') nstep,' CG POS ', 
+!      :  dtp*(nstep - 1), iliter
+         ENDIF
 !      end if
 !
-      elseif ( icgpn .eq. -1 ) then
-      iicn = 1
-      ilgt = 1
-      loccur = 2
-      numcgn = numcgn + 1
-      IF ( my_rank == 0 ) THEN
-      write(iunit,*) '      DISCHARGE IS NEGATIVE'
-      write(iunit,*) '         TOTAL NUMBER OF CGNs',numcgn
-      write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
-      ENDIF
-      IF ( isa .lt. 1 ) THEN
-!       write(24,'(i5,a,f13.3,3x,i4)') nstep,' CG NEG ', dtp*(nstep - 1),
-!     : iliter
-      ENDIF
-      end if
+       elseif ( icgpn .eq. -1 ) then
+         iicn = 1
+         ilgt = 1
+         loccur = 2
+         numcgn = numcgn + 1
+         IF ( my_rank == 0 ) THEN
+            write(iunit,*) '      DISCHARGE IS NEGATIVE'
+            write(iunit,*) '         TOTAL NUMBER OF CGNs',numcgn
+            write(iunit,*) '         TOTAL NUMBER OF LGT',numlgt
+         ENDIF
+         IF ( isa .lt. 1 ) THEN
+!        write(24,'(i5,a,f13.3,3x,i4)') nstep,' CG NEG ', dtp*(nstep - 1),
+!       : iliter
+         ENDIF
+       end if
 !
       end if  ! ( icgyn.eq.1 ) 
 
@@ -2928,6 +2944,7 @@
 !      if ( iterst .gt. niter ) then
       write(iunit,*) 'Cant find enough points..try a new starting point'
       ENDIF
+      ! loccur = 0
       
        sizetest = 0
       
@@ -2946,6 +2963,7 @@
 !      if ( iterst .gt. niter ) then
       write(iunit,*) 'Cant find enough points..try a new starting point'
       ENDIF
+      ! loccur = 0
 
        sizetest = 0
 
@@ -3386,12 +3404,12 @@
 #ifdef MPI
 
        n = 2*maxdist+1
-       CALL MPI_AllReduce(chgavailiter(-maxdist), chgavailitersum(-maxdist), n, MPI_REAL, MPI_SUM, my_comm, mpi_error_code)
+       CALL MPI_AllReduce(chgavailiter(-maxdist), chgavailitersum(-maxdist), n, irealmpitype, MPI_SUM, my_comm, mpi_error_code)
        
        chgavailiter(-maxdist:maxdist) = chgavailitersum(-maxdist:maxdist)
        chgavailitersum(:) = 0.0
 
-       CALL MPI_AllReduce(voliter(-maxdist), chgavailitersum(-maxdist), n, MPI_REAL, MPI_SUM, my_comm, mpi_error_code)
+       CALL MPI_AllReduce(voliter(-maxdist), chgavailitersum(-maxdist), n, irealmpitype, MPI_SUM, my_comm, mpi_error_code)
        voliter(-maxdist:maxdist) = chgavailitersum(-maxdist:maxdist)
        chgavailitersum(:) = 0.0
 
@@ -3848,18 +3866,18 @@
       do jy = 1,jye !ny-1
       do ix = 1,ixe ! nx-1
        dv = dxx*dyy*dzz(ix,kz,jy)
-       IF (t4(ix,jy,kz) .lt. -1.0e-18) THEN
+       IF (t4(ix,jy,kz) .lt. -1.0e-18 .and. scdisch0(ix,jy,kz) /= 0.0) THEN
         qpxn = qpxn + (its+ix-0.5)*dx*scdisch(ix,jy,kz)*dv  ! fix "ix" and "jy" for MPI
         qpyn = qpyn + (jts+jy-0.5)*dy*scdisch(ix,jy,kz)*dv
         qpzn = qpzn +     &
-     &         z1d2(kz,1)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
+     &         zlev(kz,ix,jy)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
         qnetn = qnetn + scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
         npntn = npntn + 1
-       ELSEIF (t4(ix,jy,kz) .gt. 1.0e-18) THEN
+       ELSEIF (t4(ix,jy,kz) .gt. 1.0e-18 .and. scdisch0(ix,jy,kz) /= 0.0) THEN
         qpxp = qpxp + (its+ix-0.5)*dx*scdisch(ix,jy,kz)*dv
         qpyp = qpyp + (jts+jy-0.5)*dy*scdisch(ix,jy,kz)*dv
         qpzp = qpzp +     &
-     &         z1d2(kz,1)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
+     &         zlev(kz,ix,jy)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
         qnetp = qnetp + scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
         npntp = npntp + 1
        END IF
@@ -3949,9 +3967,9 @@
       ENDIF
 
         write(iunit,'(a,3(1x,f12.5))') 'pos. drho center (x,y,z) ',    &
-     &    qpxcp,qpycp,qpzcp   
+     &    qpxcp,qpycp,qpzcp
         write(iunit,'(a,3(1x,f12.5))') 'neg. drho center (x,y,z) ',    &
-     &    qpxcn,qpycn,qpzcn   
+     &    qpxcn,qpycn,qpzcn
 
       IF ( isa .lt. 1 ) THEN
 !        write(24,'(a,3(1x,f12.5))') 'pos. drho center (x,y,z) ',
@@ -4118,7 +4136,7 @@
 !        qpzn = qpzn + (float(kz)-0.5)*scdisch(ix,jy,kz)
 
         qpzn = qpzn +     &
-     &         z1d2(kz,1)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
+     &         zlev(kz,ix,jy)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
 
         qnetn = qnetn + scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
         npntn = npntn + 1
@@ -4129,7 +4147,7 @@
 !        qpzn = qpzn + (float(kz)-0.5)*scdisch(ix,jy,kz)
 
         qpzn = qpzn +     &
-     &         z1d2(kz,1)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
+     &         zlev(kz,ix,jy)*scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
 
         qnetn = qnetn + scdisch(ix,jy,kz)*dv ! /gt(ix,jy,kz,imapz)
         npntn = npntn + 1
@@ -4608,6 +4626,16 @@
             flshi(islgt_local,kslgt_local,jslgt_local) = flshi(islgt_local,kslgt_local,jslgt_local) + 1
        ENDIF
 
+      IF ( present(i_light) .and. present(j_light) ) THEN
+      IF ( my_rank == ichooserank ) THEN
+        i_light = ixst
+        j_light = jyst
+      ELSE
+        i_light = 0
+        j_light = 0
+      ENDIF
+      ENDIF
+
       IF  ( ilgt .ge. 1 ) THEN
         loccur = Max(1, loccur)
       ELSE
@@ -5083,3 +5111,69 @@
 
       return
       end
+
+!###########################################################################
+!###########################################################################
+!
+! Subroutine chargetotals
+!
+!###########################################################################
+
+      subroutine chargetotals(totchg,totneg,totpos,sctot,  &
+                              dz8w, dx, dy,                &
+                              ims,ime,kms,kme,jms,jme,     &
+                              its,ite,kts,kte,jts,jte)
+#ifdef DM_PARALLEL
+      USE module_dm, ONLY : &
+         local_communicator, mytask, ntasks
+#endif
+       implicit none
+
+       real :: totchg,totneg,totpos
+       integer :: ims,ime,kms,kme,jms,jme
+       integer :: its,ite,kts,kte,jts,jte
+       real    ::dx,dy   ! dzz is dz8w
+       real, dimension( ims:ime , kms:kme , jms:jme ) :: sctot, dz8w
+       ! local vars
+       integer :: ix,jy,kz
+       double precision totneg1,totpos1,totneg2,totpos2,dv
+
+       integer, parameter :: ntot = 5
+       double precision  mpitotindp(ntot), mpitotoutdp(ntot)
+       integer :: mpi_error_code = 1
+#ifdef DM_PARALLEL
+       INCLUDE 'mpif.h'
+#endif
+
+       totneg1 = 0.0d0
+       totpos1 = 0.0d0
+
+      DO jy = jts,jte ! ny
+      do kz = kts,kte-1
+      DO ix = its,ite ! nx
+
+       dv = dx*dy*dz8w(ix,kz,jy)
+
+       totneg1 = totneg1 + Min(0.0, sctot(ix,kz,jy)*dv)
+       totpos1 = totpos1 + Max(0.0, sctot(ix,kz,jy)*dv)
+
+      end do
+      end do
+      end do
+
+#ifdef MPI
+       mpitotindp(1)  = totpos1
+       mpitotindp(2)  = totneg1
+
+      CALL MPI_Reduce(mpitotindp, mpitotoutdp, 4, MPI_DOUBLE_PRECISION, MPI_SUM, 0, local_communicator, mpi_error_code)
+
+       totpos1 = mpitotoutdp(1)
+       totneg1 = mpitotoutdp(2)
+
+#endif
+
+      totneg = totneg1
+      totpos = totpos1
+      totchg = totneg+totpos
+
+      end subroutine chargetotals

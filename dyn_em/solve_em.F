@@ -3929,14 +3929,16 @@ BENCH_START(micro_driver_tim)
       &        , flshp=grid%flshp                                         &
       &        , LIGHTDIS=grid%lightdis                                   &
       &        , LIGHTFOD=grid%lightfod                                   &
-      &        , SCR=scalar(ims,kms,jms,P_SCR), F_SCR=F_SCR               & 
-      &        , SCW=scalar(ims,kms,jms,P_SCW), F_SCW=F_SCW               & 
-      &        , SCI=scalar(ims,kms,jms,P_SCI), F_SCI=F_SCI               &  
-      &        , SCS=scalar(ims,kms,jms,P_SCS), F_SCS=F_SCS               & 
-      &        , SCH=scalar(ims,kms,jms,P_SCH), F_SCH=F_SCH               & 
-      &        , SCHL=scalar(ims,kms,jms,P_SCHL), F_SCHL=F_SCHL           & 
-      &        , SCIONA=scalar(ims,kms,jms,P_SCIONA), F_SCIONA=F_SCIONA   & 
-      &        , SCTOT=grid%sctot                                         &  
+      &        , SCR=scalar(ims,kms,jms,P_SCR), F_SCR=F_SCR               &
+      &        , SCW=scalar(ims,kms,jms,P_SCW), F_SCW=F_SCW               &
+      &        , SCI=scalar(ims,kms,jms,P_SCI), F_SCI=F_SCI               &
+      &        , SCS=scalar(ims,kms,jms,P_SCS), F_SCS=F_SCS               &
+      &        , SCH=scalar(ims,kms,jms,P_SCH), F_SCH=F_SCH               &
+      &        , SCHL=scalar(ims,kms,jms,P_SCHL), F_SCHL=F_SCHL           &
+      &        , SCIONA=scalar(ims,kms,jms,P_SCIONA), F_SCIONA=F_SCIONA   &
+      &        , SCTOT=grid%sctot                                         &
+      &        , CNION=scalar(ims,kms,jms,P_CNION), F_CNION=F_CNION       &
+      &        , CPION=scalar(ims,kms,jms,P_CPION), F_CPION=F_CPION       &
       &        , clnox=scalar(ims,kms,jms,p_clnox), f_clnox=f_clnox       &
       &        , HISTORY_INTERVAL=grid%history_interval                   &
       &        , CURR_SECS=curr_secs                                      &
