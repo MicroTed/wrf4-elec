@@ -2,8 +2,30 @@
    
       INTEGER :: w_proc = -1, e_proc = -1, s_proc = -1, n_proc = -1
       INTEGER :: mpi_setup_flag = -1
+      INTEGER :: irealmpitype = -1
    
    CONTAINS
+
+!-------------------------------------------------------------------------------
+!
+! >>>>>>>>>>>>>>>>>>>>>>   SUBROUTINE setrealmpitype  <<<<<<<<<<<<<<<<<<<<<  !
+!
+!-------------------------------------------------------------------------------
+     subroutine setrealmpitype()
+     IMPLICIT NONE
+     INCLUDE "mpif.h"
+
+     INTEGER rtypesize, dtypesize, ierr
+     
+     CALL mpi_type_size ( MPI_REAL, rtypesize, ierr )
+     CALL mpi_type_size ( MPI_DOUBLE_PRECISION, dtypesize, ierr )
+     IF ( RWORDSIZE .EQ. rtypesize ) THEN
+       irealmpitype = MPI_REAL
+     ELSE IF ( RWORDSIZE .EQ. dtypesize ) THEN
+       irealmpitype = MPI_DOUBLE_PRECISION
+     ENDIF
+     
+     END subroutine setrealmpitype
 
 !-------------------------------------------------------------------------------
 !
@@ -25,6 +47,7 @@
           INCLUDE "mpif.h"
 
        IF (  mpi_setup_flag < 0  ) THEN
+         call setrealmpitype()
          mpi_setup_flag = 1
        ELSE
          RETURN
@@ -124,7 +147,7 @@
           INTEGER,INTENT(IN) :: westward_tag
 
           REAL,                                                               &
-     &     DIMENSION(-ngx+1:nxt+ngx,-ngy+1:nyt+ngy,-ngz+1:nzt+ngz,na),              &
+     &     DIMENSION(-ngx+1:nxt+ngx,-ngy+1:nyt+ngy,-ngz+1:nzt+ngz,na),        &
      &     INTENT(INOUT) :: variable
 
           INTEGER,PARAMETER :: memory_success = 0
@@ -198,9 +221,9 @@
           END IF !! (debug_mpi)
 
           ALLOCATE(westward_send_buffer(                                      &
-     &                 -ng  + 1 : 0,                                           &
-     &                 -ngy + 1 : nyt + ngy,                                    &
-     &                 -ngz + 1 : nzt + ngz,                                    &
+     &                 -ng  + 1 : 0,                                          &
+     &                 -ngy + 1 : nyt + ngy,                                  &
+     &                 -ngz + 1 : nzt + ngz,                                  &
      &                 na),                                                   &
      &             STAT=memory_status)
 
@@ -209,7 +232,7 @@
               WRITE (0,*) my_rank, "ERROR: can't allocate ",                  &
      &            "westward_send_buffer of bounds ",                          &
      &            -ng + 1,":",0,",",                                          &
-     &            -ngy + 1,":",nyt + ngy, ",",                                  &
+     &            -ngy + 1,":",nyt + ngy, ",",                                &
      &            -ngz + 1,":",nzt + ngz
 
               IF (debug_mpi) THEN
@@ -218,7 +241,7 @@
               END IF !! (debug_mpi)
 
               mpi_error_code = -1
-              CALL MPI_Abort(local_communicator, mpi_error_code,                  &
+              CALL MPI_Abort(local_communicator, mpi_error_code,              &
      &                 mpi_abort_error_code)
 
               IF (debug_mpi) THEN
@@ -230,8 +253,8 @@
 
           ALLOCATE(westward_recv_buffer(                                      &
      &                 -ng + 1 : 0,                                           &
-     &                 -ngy + 1 : nyt + ngy,                                    &
-     &                 -ngz + 1 : nzt + ngz,                                    &
+     &                 -ngy + 1 : nyt + ngy,                                  &
+     &                 -ngz + 1 : nzt + ngz,                                  &
      &                 na),                                                   &
      &             STAT=memory_status)
 
@@ -240,7 +263,7 @@
               WRITE (0,*) my_rank, "ERROR: can't allocate ",                  &
      &            "westward_recv_buffer of bounds ",                          &
      &            -ng + 1,":",0,",",                                          &
-     &            -ngy + 1,":",nyt + ngy,",",                                   &
+     &            -ngy + 1,":",nyt + ngy,",",                                 &
      &            -ngz + 1,":",nzt + ngz
 
               IF (debug_mpi) THEN
@@ -249,7 +272,7 @@
               END IF !! (debug_mpi)
 
               mpi_error_code = -1
-              CALL MPI_Abort(local_communicator, mpi_error_code,                  &
+              CALL MPI_Abort(local_communicator, mpi_error_code,              &
      &                 mpi_abort_error_code)
 
               IF (debug_mpi) THEN
@@ -297,13 +320,13 @@
 
           westward_send_size =                                                &
      &        (ng)           *                                                &
-     &        (nyt + ngy * 2) *                                                &
-     &        (nzt + ngz * 2) *                                                &
+     &        (nyt + ngy * 2) *                                               &
+     &        (nzt + ngz * 2) *                                               &
      &        (na)
           westward_recv_size =                                                &
      &        (ng)           *                                                &
-     &        (nyt + ngy * 2) *                                                &
-     &        (nzt + ngz * 2) *                                                &
+     &        (nyt + ngy * 2) *                                               &
+     &        (nzt + ngz * 2) *                                               &
      &        (na)
 
           IF (debug_mpi) THEN
@@ -325,10 +348,10 @@
                   CALL MPI_Recv(                                              &
      &                     westward_recv_buffer,                              &
      &                     westward_recv_size,                                &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     east_neighbor_process,                             &
      &                     westward_tag,                                      &
-     &                     local_communicator,                                    &
+     &                     local_communicator,                                &
      &                     mpi_status, mpi_error_code)
 
                   IF (debug_mpi) THEN
@@ -344,7 +367,7 @@
      &                        "about to CALL MPI_Abort"
                       END IF !! (debug_mpi)
 
-                      CALL MPI_Abort(local_communicator, mpi_error_code,          &
+                      CALL MPI_Abort(local_communicator, mpi_error_code,      &
      &                         mpi_abort_error_code)
 
                       IF (debug_mpi) THEN
@@ -364,10 +387,10 @@
                   CALL MPI_Send(                                              &
      &                     westward_send_buffer,                              &
      &                     westward_send_size,                                &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     west_neighbor_process,                             &
      &                     westward_tag,                                      &
-     &                     local_communicator,                                    &
+     &                     local_communicator,                                &
      &                     mpi_error_code)
 
                   IF (debug_mpi) THEN
@@ -383,7 +406,7 @@
      &                        "about to CALL MPI_Abort"
                       END IF !! (debug_mpi)
 
-                      CALL MPI_Abort(local_communicator, mpi_error_code,          &
+                      CALL MPI_Abort(local_communicator, mpi_error_code,      &
      &                         mpi_abort_error_code)
 
                       IF (debug_mpi) THEN
@@ -404,15 +427,15 @@
                   CALL MPI_Sendrecv(                                          &
      &                     westward_send_buffer,                              &
      &                     westward_send_size,                                &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     west_neighbor_process,                             &
      &                     westward_tag,                                      &
      &                     westward_recv_buffer,                              &
      &                     westward_recv_size,                                &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     east_neighbor_process,                             &
      &                     westward_tag,                                      &
-     &                     local_communicator,                                    &
+     &                     local_communicator,                                &
      &                     mpi_status, mpi_error_code)
 
                   IF (debug_mpi) THEN
@@ -428,7 +451,7 @@
      &                        "about to CALL MPI_Abort"
                       END IF !! (debug_mpi)
 
-                      CALL MPI_Abort(local_communicator, mpi_error_code,          &
+                      CALL MPI_Abort(local_communicator, mpi_error_code,      &
      &                         mpi_abort_error_code)
 
                       IF (debug_mpi) THEN
@@ -458,7 +481,7 @@
 
                       DO ghost_zone = -ng+1,0
 
-                          variable(nxt-ghost_zone+1-offset,j,k,n) =                  &
+                          variable(nxt-ghost_zone+1-offset,j,k,n) =           &
      &                        westward_recv_buffer(ghost_zone,j,k,n)
 
                       END DO !! ghost_zone
@@ -493,7 +516,7 @@
 !-------------------------------------------------------------------------------
 
       SUBROUTINE sendrecv_eastward (                                          &
-     &               nxt, nyt, nzt, ngx, ngy, ngz, ng, na,                                   &
+     &               nxt, nyt, nzt, ngx, ngy, ngz, ng, na,                    &
      &               west_neighbor_process, east_neighbor_process,            &
      &               eastward_tag, variable)
 
@@ -510,7 +533,7 @@
           INTEGER,INTENT(IN) :: eastward_tag
 
           REAL,                                                               &
-     &     DIMENSION(-ngx+1:nxt+ngx,-ngy+1:nyt+ngy,-ngz+1:nzt+ngz,na),              &
+     &     DIMENSION(-ngx+1:nxt+ngx,-ngy+1:nyt+ngy,-ngz+1:nzt+ngz,na),        &
      &     INTENT(INOUT) :: variable
 
           INTEGER,PARAMETER :: memory_success = 0
@@ -582,8 +605,8 @@
 
           ALLOCATE(eastward_send_buffer(                                      &
      &                 -ng + 1 : 0,                                           &
-     &                 -ngy + 1 : nyt + ngy,                                    &
-     &                 -ngz + 1 : nzt + ngz,                                    &
+     &                 -ngy + 1 : nyt + ngy,                                  &
+     &                 -ngz + 1 : nzt + ngz,                                  &
      &                 na),                                                   &
      &             STAT=memory_status)
 
@@ -592,7 +615,7 @@
               WRITE (0,*) my_rank, "ERROR: can't allocate ",                  &
      &            "eastward_send_buffer of bounds ",                          &
      &            -ng + 1,":",0,",",                                          &
-     &            -ngy + 1,":",nyt + ngy,",",                                   &
+     &            -ngy + 1,":",nyt + ngy,",",                                 &
      &            -ngz + 1,":",nzt + ngz
 
               IF (debug_mpi) THEN
@@ -601,7 +624,7 @@
               END IF !! (debug_mpi)
 
               mpi_error_code = -1
-              CALL MPI_Abort(local_communicator, mpi_error_code,                  &
+              CALL MPI_Abort(local_communicator, mpi_error_code,              &
      &                 mpi_abort_error_code)
 
               IF (debug_mpi) THEN
@@ -613,8 +636,8 @@
 
           ALLOCATE(eastward_recv_buffer(                                      &
      &                 -ng + 1 : 0,                                           &
-     &                 -ngy + 1 : nyt + ngy,                                    &
-     &                 -ngz + 1 : nzt + ngz,                                    &
+     &                 -ngy + 1 : nyt + ngy,                                  &
+     &                 -ngz + 1 : nzt + ngz,                                  &
      &                 na),                                                   &
      &             STAT=memory_status)
 
@@ -623,7 +646,7 @@
               WRITE (0,*) my_rank, "ERROR: can't allocate ",                  &
      &            "eastward_recv_buffer of bounds ",                          &
      &            -ng + 1,":",0,",",                                          &
-     &            -ngy + 1,":",nyt + ngy, ",",                                  &
+     &            -ngy + 1,":",nyt + ngy, ",",                                &
      &            -ngz + 1,":",nzt + ngz
 
               IF (debug_mpi) THEN
@@ -632,7 +655,7 @@
               END IF !! (debug_mpi)
 
               mpi_error_code = -1
-              CALL MPI_Abort(local_communicator, mpi_error_code,                  &
+              CALL MPI_Abort(local_communicator, mpi_error_code,              &
      &                 mpi_abort_error_code)
 
               IF (debug_mpi) THEN
@@ -680,13 +703,13 @@
 
           eastward_send_size =                                                &
      &        (ng)           *                                                &
-     &        (nyt + ngy * 2) *                                                &
-     &        (nzt + ngz * 2) *                                                &
+     &        (nyt + ngy * 2) *                                               &
+     &        (nzt + ngz * 2) *                                               &
      &        (na)
           eastward_recv_size =                                                &
      &        (ng)           *                                                &
-     &        (nyt + ngy * 2) *                                                &
-     &        (nzt + ngz * 2) *                                                &
+     &        (nyt + ngy * 2) *                                               &
+     &        (nzt + ngz * 2) *                                               &
      &        (na)
 
           IF (debug_mpi) THEN
@@ -708,10 +731,10 @@
                   CALL MPI_Recv(                                              &
      &                     eastward_recv_buffer,                              &
      &                     eastward_recv_size,                                &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     west_neighbor_process,                             &
      &                     eastward_tag,                                      &
-     &                     local_communicator,                                    &
+     &                     local_communicator,                                &
      &                     mpi_status, mpi_error_code)
 
                   IF (debug_mpi) THEN
@@ -727,7 +750,7 @@
      &                        "about to CALL MPI_Abort"
                       END IF !! (debug_mpi)
 
-                      CALL MPI_Abort(local_communicator, mpi_error_code,          &
+                      CALL MPI_Abort(local_communicator, mpi_error_code,      &
      &                         mpi_abort_error_code)
 
                       IF (debug_mpi) THEN
@@ -747,10 +770,10 @@
                   CALL MPI_Send(                                              &
      &                     eastward_send_buffer,                              &
      &                     eastward_send_size,                                &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     east_neighbor_process,                             &
      &                     eastward_tag,                                      &
-     &                     local_communicator,                                    &
+     &                     local_communicator,                                &
      &                     mpi_error_code)
 
                   IF (debug_mpi) THEN
@@ -766,7 +789,7 @@
      &                        "about to CALL MPI_Abort"
                       END IF !! (debug_mpi)
 
-                      CALL MPI_Abort(local_communicator, mpi_error_code,          &
+                      CALL MPI_Abort(local_communicator, mpi_error_code,      &
      &                         mpi_abort_error_code)
 
                       IF (debug_mpi) THEN
@@ -786,15 +809,15 @@
                   CALL MPI_Sendrecv(                                          &
      &                     eastward_send_buffer,                              &
      &                     eastward_send_size,                                &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     east_neighbor_process,                             &
      &                     eastward_tag,                                      &
      &                     eastward_recv_buffer,                              &
      &                     eastward_recv_size,                                &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     west_neighbor_process,                             &
      &                     eastward_tag,                                      &
-     &                     local_communicator,                                    &
+     &                     local_communicator,                                &
      &                     mpi_status, mpi_error_code)
 
                   IF (debug_mpi) THEN
@@ -810,7 +833,7 @@
      &                        "about to CALL MPI_Abort"
                       END IF !! (debug_mpi)
 
-                      CALL MPI_Abort(local_communicator, mpi_error_code,          &
+                      CALL MPI_Abort(local_communicator, mpi_error_code,      &
      &                         mpi_abort_error_code)
 
                       IF (debug_mpi) THEN
@@ -875,7 +898,7 @@
 !
 !-------------------------------------------------------------------------------
       SUBROUTINE sendrecv_southward (                                         &
-     &               nxt, nyt, nzt, ngx, ngy, ngz, ng, na,                                   &
+     &               nxt, nyt, nzt, ngx, ngy, ngz, ng, na,                    &
      &               north_neighbor_process, south_neighbor_process,          &
      &               southward_tag, variable, voffset)
 
@@ -892,7 +915,7 @@
           INTEGER,INTENT(IN) :: southward_tag
 
           REAL,                                                               &
-     &     DIMENSION(-ngx+1:nxt+ngx,-ngy+1:nyt+ngy,-ngz+1:nzt+ngz,na),              &
+     &     DIMENSION(-ngx+1:nxt+ngx,-ngy+1:nyt+ngy,-ngz+1:nzt+ngz,na),        &
      &     INTENT(INOUT) :: variable
 
           INTEGER,OPTIONAL,INTENT(IN) :: voffset(na)
@@ -975,9 +998,9 @@
           END IF !! (debug_mpi)
 
           ALLOCATE(southward_send_buffer(                                     &
-     &                 -ngx + 1 : nxt + ngx,                                    &
+     &                 -ngx + 1 : nxt + ngx,                                  &
      &                 -ng + 1 : 0,                                           &
-     &                 -ngz + 1 : nzt + ngz,                                    &
+     &                 -ngz + 1 : nzt + ngz,                                  &
      &                 na),                                                   &
      &             STAT=memory_status)
 
@@ -985,7 +1008,7 @@
 
               WRITE (0,*) my_rank, "ERROR: can't allocate ",                  &
      &            "southward_send_buffer of bounds ",                         &
-     &            -ngx + 1,":",nxt + ngx, ",",                                  &
+     &            -ngx + 1,":",nxt + ngx, ",",                                &
      &            -ng + 1,":",0,",",                                          &
      &            -ngz + 1,":",nzt + ngz
 
@@ -995,7 +1018,7 @@
               END IF !! (debug_mpi)
 
               mpi_error_code = -1
-              CALL MPI_Abort(local_communicator, mpi_error_code,                  &
+              CALL MPI_Abort(local_communicator, mpi_error_code,              &
      &                 mpi_abort_error_code)
 
               IF (debug_mpi) THEN
@@ -1006,9 +1029,9 @@
           END IF !! (memory_status /= memory_success)
 
           ALLOCATE(southward_recv_buffer(                                     &
-     &                 -ngx + 1 : nxt + ngx,                                    &
+     &                 -ngx + 1 : nxt + ngx,                                  &
      &                 -ng + 1 : 0,                                           &
-     &                 -ngz + 1 : nzt + ngz,                                    &
+     &                 -ngz + 1 : nzt + ngz,                                  &
      &                 na),                                                   &
      &             STAT=memory_status)
 
@@ -1016,7 +1039,7 @@
 
               WRITE (0,*) my_rank, "ERROR: can't allocate ",                  &
      &            "southward_recv_buffer of bounds ",                         &
-     &            -ngx + 1,":",nxt + ngx,",",                                   &
+     &            -ngx + 1,":",nxt + ngx,",",                                 &
      &            -ng + 1,":",0,",",                                          &
      &            -ngz + 1,":",nzt + ngz
 
@@ -1026,7 +1049,7 @@
               END IF !! (debug_mpi)
 
               mpi_error_code = -1
-              CALL MPI_Abort(local_communicator, mpi_error_code,                  &
+              CALL MPI_Abort(local_communicator, mpi_error_code,              &
      &                 mpi_abort_error_code)
 
               IF (debug_mpi) THEN
@@ -1073,14 +1096,14 @@
           END IF !! (has_northern_neighbor)
 
           southward_send_size =                                               &
-     &        (nxt + ngx * 2) *                             &
-     &        (ng)           *                             &
-     &        (nzt + ngz * 2) *                                                &
+     &        (nxt + ngx * 2) *                                               &
+     &        (ng)           *                                                &
+     &        (nzt + ngz * 2) *                                               &
      &        (na)
           southward_recv_size =                                               &
-     &        (nxt + ngx * 2) *                             &
-     &        (ng)           *                             &
-     &        (nzt + ngz * 2) *                                                &
+     &        (nxt + ngx * 2) *                                               &
+     &        (ng)           *                                                &
+     &        (nzt + ngz * 2) *                                               &
      &        (na)
 
           IF (debug_mpi) THEN
@@ -1102,10 +1125,10 @@
                   CALL MPI_Recv(                                              &
      &                     southward_recv_buffer,                             &
      &                     southward_recv_size,                               &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     north_neighbor_process,                            &
      &                     southward_tag,                                     &
-     &                     local_communicator,                                    &
+     &                     local_communicator,                                &
      &                     mpi_status, mpi_error_code)
 
                   IF (debug_mpi) THEN
@@ -1121,7 +1144,7 @@
      &                        "about to CALL MPI_Abort"
                       END IF !! (debug_mpi)
 
-                      CALL MPI_Abort(local_communicator, mpi_error_code,          &
+                      CALL MPI_Abort(local_communicator, mpi_error_code,      &
      &                         mpi_abort_error_code)
 
                       IF (debug_mpi) THEN
@@ -1141,10 +1164,10 @@
                   CALL MPI_Send(                                              &
      &                     southward_send_buffer,                             &
      &                     southward_send_size,                               &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     south_neighbor_process,                            &
      &                     southward_tag,                                     &
-     &                     local_communicator,                                    &
+     &                     local_communicator,                                &
      &                     mpi_error_code)
 
                   IF (debug_mpi) THEN
@@ -1160,7 +1183,7 @@
      &                        "about to CALL MPI_Abort"
                       END IF !! (debug_mpi)
 
-                      CALL MPI_Abort(local_communicator, mpi_error_code,          &
+                      CALL MPI_Abort(local_communicator, mpi_error_code,      &
      &                         mpi_abort_error_code)
 
                       IF (debug_mpi) THEN
@@ -1180,15 +1203,15 @@
                   CALL MPI_Sendrecv(                                          &
      &                     southward_send_buffer,                             &
      &                     southward_send_size,                               &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     south_neighbor_process,                            &
      &                     southward_tag,                                     &
      &                     southward_recv_buffer,                             &
      &                     southward_recv_size,                               &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     north_neighbor_process,                            &
      &                     southward_tag,                                     &
-     &                     local_communicator,                                    &
+     &                     local_communicator,                                &
      &                     mpi_status, mpi_error_code)
 
                   IF (debug_mpi) THEN
@@ -1204,7 +1227,7 @@
      &                        "about to CALL MPI_Abort"
                       END IF !! (debug_mpi)
 
-                      CALL MPI_Abort(local_communicator, mpi_error_code,          &
+                      CALL MPI_Abort(local_communicator, mpi_error_code,      &
      &                         mpi_abort_error_code)
 
                       IF (debug_mpi) THEN
@@ -1234,7 +1257,7 @@
 
                       DO ghost_zone = -ng+1,0
 
-                          variable(i,nyt-ghost_zone+1-offset(na),k,n) =           &
+                          variable(i,nyt-ghost_zone+1-offset(na),k,n) =       &
                               southward_recv_buffer(i,ghost_zone,k,n)
 
                       END DO !! ghost_zone
@@ -1269,7 +1292,7 @@
 !
 !-------------------------------------------------------------------------------
       SUBROUTINE sendrecv_northward (                                         &
-     &               nxt, nyt, nzt, ngx, ngy, ngz, ng, na,                                   &
+     &               nxt, nyt, nzt, ngx, ngy, ngz, ng, na,                    &
      &               north_neighbor_process, south_neighbor_process,          &
      &               northward_tag, variable, voffset )
 
@@ -1286,7 +1309,7 @@
           INTEGER,INTENT(IN) :: northward_tag
 
           REAL,                                                               &
-     &     DIMENSION(-ngx+1:nxt+ngx,-ngy+1:nyt+ngy,-ngz+1:nzt+ngz,na),              &
+     &     DIMENSION(-ngx+1:nxt+ngx,-ngy+1:nyt+ngy,-ngz+1:nzt+ngz,na),        &
      &     INTENT(INOUT) :: variable
 
           INTEGER,OPTIONAL,INTENT(IN) :: voffset(na)
@@ -1366,9 +1389,9 @@
           END IF !! (debug_mpi)
 
           ALLOCATE(northward_send_buffer(                                     &
-     &                 -ngx + 1 : nxt + ngx,                                    &
+     &                 -ngx + 1 : nxt + ngx,                                  &
      &                 -ng + 1 : 0,                                           &
-     &                 -ngz + 1 : nzt + ngz,                                    &
+     &                 -ngz + 1 : nzt + ngz,                                  &
      &                 na),                                                   &
      &             STAT=memory_status)
 
@@ -1376,7 +1399,7 @@
 
               WRITE (0,*) my_rank, "ERROR: can't allocate ",                  &
      &            "northward_send_buffer of bounds ",                         &
-     &            -ngx + 1,":",nxt + ngx,",",                                   &
+     &            -ngx + 1,":",nxt + ngx,",",                                 &
      &            -ng + 1,":",0,",",                                          &
      &            -ngz + 1,":",nzt + ngz
 
@@ -1386,7 +1409,7 @@
               END IF !! (debug_mpi)
 
               mpi_error_code = -1
-              CALL MPI_Abort(local_communicator, mpi_error_code,                  &
+              CALL MPI_Abort(local_communicator, mpi_error_code,              &
      &                 mpi_abort_error_code)
 
               IF (debug_mpi) THEN
@@ -1397,9 +1420,9 @@
           END IF !! (memory_status /= memory_success)
 
           ALLOCATE(northward_recv_buffer(                                     &
-     &                 -ngx + 1 : nxt + ngx,                                    &
+     &                 -ngx + 1 : nxt + ngx,                                  &
      &                 -ng + 1 : 0,                                           &
-     &                 -ngz + 1 : nzt + ngz,                                    &
+     &                 -ngz + 1 : nzt + ngz,                                  &
      &                 na),                                                   &
      &             STAT=memory_status)
 
@@ -1407,7 +1430,7 @@
 
               WRITE (0,*) my_rank, "ERROR: can't allocate ",                  &
      &            "northward_recv_buffer of bounds ",                         &
-     &            -ngx + 1,":",nxt + ngx,",",                                   &
+     &            -ngx + 1,":",nxt + ngx,",",                                 &
      &            -ng + 1,":",0,",",                                          &
      &            -ngz + 1,":",nzt + ngz
 
@@ -1417,7 +1440,7 @@
               END IF !! (debug_mpi)
 
               mpi_error_code = -1
-              CALL MPI_Abort(local_communicator, mpi_error_code,                  &
+              CALL MPI_Abort(local_communicator, mpi_error_code,              &
      &                 mpi_abort_error_code)
 
               IF (debug_mpi) THEN
@@ -1464,14 +1487,14 @@
           END IF !! (has_southern_neighbor)
 
           northward_send_size =                                               &
-     &        (nxt + ngx * 2) *                             &
-     &        (ng)           *                             &
-     &        (nzt + ngz * 2) *                                                &
+     &        (nxt + ngx * 2) *                                               &
+     &        (ng)           *                                                &
+     &        (nzt + ngz * 2) *                                               &
      &        (na)
           northward_recv_size =                                               &
-     &        (nxt + ngx * 2) *                             &
-     &        (ng)           *                             &
-     &        (nzt + ngx * 2) *                                                &
+     &        (nxt + ngx * 2) *                                               &
+     &        (ng)           *                                                &
+     &        (nzt + ngz * 2) *                                               &
      &        (na)
 
           IF (debug_mpi) THEN
@@ -1493,10 +1516,10 @@
                   CALL MPI_Recv(                                              &
      &                     northward_recv_buffer,                             &
      &                     northward_recv_size,                               &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     south_neighbor_process,                            &
      &                     northward_tag,                                     &
-     &                     local_communicator,                                    &
+     &                     local_communicator,                                &
      &                     mpi_status, mpi_error_code)
 
                   IF (debug_mpi) THEN
@@ -1512,7 +1535,7 @@
      &                        "about to CALL MPI_Abort"
                       END IF !! (debug_mpi)
 
-                      CALL MPI_Abort(local_communicator, mpi_error_code,          &
+                      CALL MPI_Abort(local_communicator, mpi_error_code,      &
      &                         mpi_abort_error_code)
 
                       IF (debug_mpi) THEN
@@ -1532,10 +1555,10 @@
                   CALL MPI_Send(                                              &
      &                     northward_send_buffer,                             &
      &                     northward_send_size,                               &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     north_neighbor_process,                            &
      &                     northward_tag,                                     &
-     &                     local_communicator,                                    &
+     &                     local_communicator,                                &
      &                     mpi_error_code)
 
                   IF (debug_mpi) THEN
@@ -1551,7 +1574,7 @@
      &                        "about to CALL MPI_Abort"
                       END IF !! (debug_mpi)
 
-                      CALL MPI_Abort(local_communicator, mpi_error_code,          &
+                      CALL MPI_Abort(local_communicator, mpi_error_code,      &
      &                         mpi_abort_error_code)
 
                       IF (debug_mpi) THEN
@@ -1571,15 +1594,15 @@
                   CALL MPI_Sendrecv(                                          &
      &                     northward_send_buffer,                             &
      &                     northward_send_size,                               &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     north_neighbor_process,                            &
      &                     northward_tag,                                     &
      &                     northward_recv_buffer,                             &
      &                     northward_recv_size,                               &
-     &                     MPI_REAL,                                          &
+     &                     irealmpitype,                                      &
      &                     south_neighbor_process,                            &
      &                     northward_tag,                                     &
-     &                     local_communicator,                                    &
+     &                     local_communicator,                                &
      &                     mpi_status, mpi_error_code)
 
                   IF (debug_mpi) THEN
@@ -1595,7 +1618,7 @@
      &                        "about to CALL MPI_Abort"
                       END IF !! (debug_mpi)
 
-                      CALL MPI_Abort(local_communicator, mpi_error_code,          &
+                      CALL MPI_Abort(local_communicator, mpi_error_code,      &
      &                         mpi_abort_error_code)
 
                       IF (debug_mpi) THEN

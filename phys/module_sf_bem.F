@@ -1,4 +1,11 @@
 MODULE module_sf_bem
+#if defined(mpas)
+use mpas_atmphys_utilities, only: physics_error_fatal
+#define FATAL_ERROR(M) call physics_error_fatal( M )
+#else
+use module_wrf_error
+#define FATAL_ERROR(M) call wrf_error_fatal( M )
+#endif
 ! -----------------------------------------------------------------------
 !  Variables and constants used in the BEM module
 ! -----------------------------------------------------------------------
@@ -882,7 +889,7 @@ MODULE module_sf_bem
        uroof=(uout(n+1)**2+vout(n+1)**2)**0.5
       deltat=tpv-tair(n+1)
     hf=2.5*(40./100.*uroof)**(0.5)
-    hc=9.842*abs(deltat)**(1./3.)/(7.283-abs(cos(tiltangle)))
+    hc=9.482*abs(deltat)**(1./3.)/(7.238-abs(cos(tiltangle)))
     hup=sqrt(hc**2.+(hf)**2.)
     hc=1.810*abs(deltat)**(1./3.)/(1.382+abs(cos(tiltangle)))
     hdown=sqrt(hc**2.+(hf)**2.)
@@ -2459,7 +2466,7 @@ MODULE module_sf_bem
                         icol=k
                      endif
                   elseif(ipiv(k).gt.1)then
-                     CALL wrf_error_fatal('singular matrix in gaussjbem')
+                     FATAL_ERROR('singular matrix in gaussjbem')
                   endif
                enddo
             endif
@@ -2480,7 +2487,7 @@ MODULE module_sf_bem
           
          endif
          
-         if(a(icol,icol).eq.0) CALL wrf_error_fatal('singular matrix in gaussjbem')
+         if(a(icol,icol).eq.0) FATAL_ERROR('singular matrix in gaussjbem')
          
          pivinv=1./a(icol,icol)
          a(icol,icol)=1

@@ -550,6 +550,7 @@ foreach $file (@ARGV) {
            $cgn = $cgn - 1;
            $cgnx = $cgnx + 1;
             }
+        $type = 0;
       }
     if ( /^ WARNING: Lightning increased the total energy/ ) {
      $tries = $tries + 1;
