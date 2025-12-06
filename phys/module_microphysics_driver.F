@@ -53,6 +53,7 @@ SUBROUTINE microphysics_driver(                                          &
                       ,qndrop_curr,qni_curr,qh_curr,qnh_curr             &
                       ,qzr_curr,qzi_curr,qzs_curr,qzg_curr,qzh_curr      &
                       ,qns_curr,qnr_curr,qng_curr,qnn_curr,qnc_curr      &
+                      ,qnina_curr    &
                       ,qnwfa_curr,qnifa_curr,qnbca_curr                  & ! for water/ice-friendly/black carbon aerosols
                       ,f_qnwfa,f_qnifa,f_qnbca                           & ! for water/ice-friendly/black carbon aerosols
                       ,qvolg_curr,qvolh_curr                             &
@@ -69,7 +70,7 @@ SUBROUTINE microphysics_driver(                                          &
                       ,effr_curr,ice_effr_curr,tot_effr_curr             &
                       ,qic_effr_curr,qip_effr_curr,qid_effr_curr         &             
                       ,f_qv,f_qc,f_qr,f_qi,f_qs,f_qg,f_qndrop,f_qni      &
-                      ,f_qns,f_qnr,f_qng,f_qnc,f_qnn,f_qh,f_qnh          &
+                      ,f_qns,f_qnr,f_qng,f_qnc,f_qnn,f_qh,f_qnh,f_qnina  &
                       ,            f_qzr,f_qzi,f_qzs,f_qzg,f_qzh         &
                       ,f_qvolg,f_qvolh                                   &
                       ,f_qic,f_qip,f_qid &
@@ -716,7 +717,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                  ,qv_curr,qc_curr,qr_curr,qi_curr,qs_curr,qg_curr &
                  ,qt_curr,qndrop_curr,qni_curr,qh_curr,qnh_curr   &
                  ,qns_curr,qnr_curr,qng_curr,qnn_curr,qnc_curr    &
-                 ,qic_curr,qip_curr,qid_curr &
+                 ,qic_curr,qip_curr,qid_curr,qnina_curr           &
                  ,qnic_curr,qnip_curr,qnid_curr &
                  ,qzr_curr,qzi_curr,qzs_curr,qzg_curr,qzh_curr    &
                  ,qir_curr,qib_curr                               & ! for P3
@@ -796,7 +797,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 !
 
    LOGICAL, OPTIONAL :: f_qv,f_qc,f_qr,f_qi,f_qs,f_qg,f_qndrop,f_qni,f_qt    &
-                       ,f_qns,f_qnr,f_qng,f_qnn,f_qnc,f_qh,f_qnh,f_qzr       &
+                       ,f_qns,f_qnr,f_qng,f_qnn,f_qnc,f_qh,f_qnh,f_qzr,f_qnina  &
                       ,f_effr,f_ice_effr,f_tot_effr &
                        ,f_qic_effr,f_qip_effr,f_qid_effr &
                       ,f_qic,f_qip,f_qid &
@@ -2247,6 +2248,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      QH=qg_curr,                         &
                      QHL=qh_curr,                        &
  !                    CCW=qnc_curr,                       &
+                     cni=qnina_curr, f_cina=f_qnina,     &
                      CCW=qndrop_curr,                    &
                      CRW=qnr_curr,                       &
                      CCI=qni_curr,                       &
@@ -2310,6 +2312,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      QH=qg_curr,                         &
                      QHL=qh_curr,                        &
 !                     cn=qnn_curr,                        &
+                     cni=qnina_curr, f_cina=f_qnina,     &
                      CCW=qndrop_curr,                       &
                      CRW=qnr_curr,                       &
                      CCI=qni_curr,                       &
@@ -2413,6 +2416,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      QS=qs_curr,                         &
                      QH=qg_curr,                         &
  !                    CCW=qnc_curr,                       &
+                     cni=qnina_curr, f_cina=f_qnina,     &
                      CCW=qndrop_curr,                    &
                      CRW=qnr_curr,                       &
                      CCI=qni_curr,                       &
@@ -2471,6 +2475,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      QS=qs_curr,                         &
                      QH=qg_curr,                         &
 !                     cn=qnn_curr,                        &
+                     cni=qnina_curr, f_cina=f_qnina,     &
                      CCW=qndrop_curr,                    &
                      CRW=qnr_curr,                       &
                      CCI=qni_curr,                       &
@@ -2587,6 +2592,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      VHW=qvolg_curr,                     &
                      VHL=qvolh_curr,                     &
                      cn=qnn_curr,                        &
+                     cni=qnina_curr, f_cina=f_qnina,     &
                      PII=pi_phy,                         &
                      P=p,                                &
                      W=w,                                &
@@ -2641,6 +2647,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      QH=qg_curr,                         &
                      QHL=qh_curr,                        &
                      cn=qnn_curr,                        &
+                     cni=qnina_curr, f_cina=f_qnina,     &
                      CCW=qndrop_curr,                    &
                      CRW=qnr_curr,                       &
                      CCI=qni_curr,                       &

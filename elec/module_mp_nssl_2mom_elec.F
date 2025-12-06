@@ -362,7 +362,8 @@ MODULE module_mp_nssl_2mom
   integer, private :: itype1 = 0, itype2 = 2  ! controls Hallett-Mossop process
   integer, private :: in_freeze_rain_first = 0 ! =1 use IN to freezed rain drops (if none, then freeze droplets)
   integer, private :: icenucopt = 1       ! =1 Meyers/Ferrier primary ice nucleation; =2 Thompson/Cooper, =3 Phillips (Meyers/Demott), =4 DeMott (2010)
-  real, private :: naer = 1.0e6  ! background large aerosol conc. for DeMott
+  integer, private :: inactopt = 2        ! 1=old IN activation using cmassin; 2=activate IN by depleting droplets
+  real, private :: naer = 1.0e6  ! background large aerosol conc. for DeMott (per standard m^3)
   integer, private :: icfn = 2                ! contact freezing: 0 = off; 1 = hack (ok for single moment); 2 = full Cotton/Meyers version
   integer, private :: ihrn = 0            ! Hobbs-Rangno ice multiplication (Ferrier, 1994; use in 10-ice only)
   integer, private :: ibfc = 1            ! Flag to use Bigg freezing on droplets (0 = off (uses alternate freezing), 1 = on)
@@ -1050,7 +1051,7 @@ MODULE module_mp_nssl_2mom
                         switchccn, old_cccn,  &
                         ciintmx,        &
                         itype1, itype2, &
-                        icenucopt, in_freeze_rain_first,     &
+                        icenucopt, inactopt, in_freeze_rain_first,     &
                         naer,           &
                         icfn,           &
                         ibfc, iacr, icracr, &
@@ -1208,6 +1209,7 @@ MODULE module_mp_nssl_2mom
      & nssl_alphahl, &
      & nssl_alphar, &
      & nssl_density_on, nssl_hail_on, nssl_ccn_on, nssl_icecrystals_on, ccn_is_ccna, &
+     & nssl_cina_on, &
      & infileunit, &
      & myrank, mpiroot &
      )
@@ -1229,7 +1231,8 @@ MODULE module_mp_nssl_2mom
      & nssl_icdx, &
      & nssl_icdxhl, myrank, mpiroot, &
      & nssl_ufccn
-   logical, intent(in), optional :: nssl_density_on, nssl_hail_on, nssl_ccn_on, nssl_icecrystals_on
+   logical, intent(in), optional :: nssl_density_on, nssl_hail_on, nssl_ccn_on, nssl_icecrystals_on, &
+                                    nssl_cina_on
    integer, intent(inout), optional :: ccn_is_ccna
 
   integer, intent(in),optional      :: infileunit
@@ -1440,6 +1443,10 @@ MODULE module_mp_nssl_2mom
             ccn_is_ccna = 1
           ENDIF
         ENDIF
+      ENDIF
+
+      IF ( present( nssl_cina_on ) ) THEN
+          turn_on_cina = nssl_cina_on
       ENDIF
 
       cwccn = ccn
@@ -3069,6 +3076,26 @@ SUBROUTINE nssl_2mom_driver(qv, qc, qr, qi, qs, qh, qhl, ccw, crw, cci, csw, chw
        !   t7(ix,1,kz) = 0.0
         ENDIF
       
+
+      ELSEIF ( icenucopt == 5 ) THEN ! DeMott 2015
+
+        IF ( t0(ix,1,kz) < 268.16 .and.  t0(ix,1,kz) > 223.15 .and. ssival > 1.001 ) THEN ! 
+      
+        ! cf = 1, alpha=0, beta = 1.25, gamma = 0.46, delta = -11.6
+        ! nint = cf * naer**(alpha*(-Tc) + beta) *exp(gamma*(-Tc) + delta)
+        ! nint = 1.0 * naer**( beta) *exp(gamma*(-Tc) + delta)
+        ! nint has units of per (standard) liter, so mult by 1.e3 and scale by dn/rho00
+        ! naer needs units of cm**-3, so mult by 1.e-6
+
+            tmp = 1.e-6*naer
+        !  dp1 = 1.e3*0.0000594*(273.16 - t0(ix,1,kz))**3.33 * (1.e-6*cin*dn(ix,1,kz))**(0.0264*(273.16 - t0(ix,1,kz)) + 0.0033)
+          dp1 = 1.e3*dn1(ix,1,kz)/rho00* (tmp)**(1.25)*exp( 0.46*(273.16 - t0(ix,1,kz)) - 11.6)
+          t7(ix,1,kz) = Min(dp1, 1.0d30)
+      
+        ELSE
+          t7(ix,1,kz) = 0.0
+        ENDIF
+
       ENDIF ! icenucopt
 
 
@@ -15147,6 +15174,7 @@ END SUBROUTINE nssl_2mom_driver
 
 !
       real ciint(ngs), crfrz(ngs), crfrzf(ngs), crfrzs(ngs)
+      real ciintd(ngs), qiintd(ngs) ! IN activation by droplet freezing
       real cicint(ngs)
       real cipint(ngs)
       real ciacw(ngs), cwacii(ngs) 
@@ -22491,6 +22519,8 @@ END SUBROUTINE nssl_2mom_driver
       do mgs = 1,ngscnt
       qiint(mgs) = 0.0
       ciint(mgs) = 0.0
+      qiintd(mgs) = 0.0
+      ciintd(mgs) = 0.0
       qicicnt(mgs) = 0.0
       cicint(mgs) = 0.0
       qipipnt(mgs) = 0.0
@@ -22573,7 +22603,7 @@ END SUBROUTINE nssl_2mom_driver
       
       
       
-      ELSEIF ( icenucopt == 3 .or. icenucopt == 4 .or. icenucopt == 10 ) THEN
+      ELSEIF ( icenucopt == 3 .or. icenucopt == 4 .or. icenucopt == 5 .or. icenucopt == 10 ) THEN
         IF (  temg(mgs) .lt. 268.15 ) THEN
           IF ( lcin > 1 ) THEN
            ciint(mgs) = Min(cnina(mgs), ccin(mgs))
@@ -22588,14 +22618,23 @@ END SUBROUTINE nssl_2mom_driver
 
       ENDIF
 !
+      IF ( inactopt == 2 ) THEN ! IN are freezing droplets
+         IF ( cx(mgs,lc) > 0. ) THEN
+           ciintd(mgs) = Min( ciint(mgs), cx(mgs,lc)*dtpinv )
+           qiintd(mgs) = ciintd(mgs)*xmas(mgs,lc)*rhoinv(mgs)
+         ENDIF
+         ciint(mgs) = 0.0
+         qiint(mgs) = 0.0
+      ENDIF
+
       if ( xplate(mgs) .eq. 1 ) then
-      qipipnt(mgs) = qiint(mgs)
-      cipint(mgs) = ciint(mgs)
+      qipipnt(mgs) = Max( qiint(mgs), qiintd(mgs) )
+      cipint(mgs) = Max( ciint(mgs), ciintd(mgs) )
       end if
 !
       if ( xcolmn(mgs) .eq. 1 ) then
-      qicicnt(mgs) = qiint(mgs)
-      cicint(mgs) = ciint(mgs)
+      qicicnt(mgs) = Max( qiint(mgs), qiintd(mgs) )
+      cicint(mgs) = Max( ciint(mgs), ciintd(mgs) )
       end if
 !
 !     qipipnt(mgs) = 0.0
@@ -22714,8 +22753,7 @@ END SUBROUTINE nssl_2mom_driver
      &  +il5(mgs)*cisbv(mgs)   &
      &  -(1.-il5(mgs))*cimlr(mgs)
 
-      pccin(mgs) = ciint(mgs)
-      
+      pccin(mgs) = Max( ciint(mgs), ciintd(mgs) ) ! rate of IN activation
 
       end do
       ENDIF ! ffrzs
@@ -22745,7 +22783,7 @@ END SUBROUTINE nssl_2mom_driver
      &  +il5(mgs)*cisbv(mgs)   &
      &  -(1.-il5(mgs))*cimlr(mgs)
 
-      pccin(mgs) = ciint(mgs)
+      pccin(mgs) = Max( ciint(mgs), ciintd(mgs) ) ! rate of IN activation
 
       end do
       ENDIF ! warmonly
@@ -22764,7 +22802,7 @@ END SUBROUTINE nssl_2mom_driver
       pccwd(mgs) =    &
      &  - cautn(mgs) +   &
      &  il5(mgs)*(-ciacw(mgs)-cwfrz(mgs)-cwctfzp(mgs)   &
-     &  -cwctfzc(mgs)   &
+     &  -cwctfzc(mgs) - ciintd(mgs)  &
      &   )   &
      &  -cracw(mgs) -csacw(mgs)  -chacw(mgs) - chlacw(mgs)
 
@@ -22846,13 +22884,14 @@ END SUBROUTINE nssl_2mom_driver
         cwctfzp(mgs) = frac*cwctfzp(mgs)
         cwfrzc(mgs)  = frac*cwfrzc(mgs)
         cwctfzc(mgs) = frac*cwctfzc(mgs)
+        ciintd(mgs)  = frac*ciintd(mgs)
         cwctfz(mgs) = frac*cwctfz(mgs)
         cracw(mgs)   = frac*cracw(mgs)
         csacw(mgs)   = frac*csacw(mgs)
         chacw(mgs)   = frac*chacw(mgs)
         cautn(mgs)   = frac*cautn(mgs)
        
-        pccii(mgs) = pccii(mgs) - (1.-frac)*il5(mgs)*(cwfrzc(mgs)+cwctfzc(mgs))*(1. - ffrzs)
+        pccii(mgs) = pccii(mgs) - (1.-frac)*il5(mgs)*(cwfrzc(mgs)+cwctfzc(mgs)+ciintd(mgs))*(1. - ffrzs)
         IF ( lhl .gt. 1 ) chlacw(mgs)   = frac*chlacw(mgs)
 
 !       STOP
@@ -23239,7 +23278,7 @@ END SUBROUTINE nssl_2mom_driver
       IF ( warmonly < 0.5 ) THEN
       pqcwd(mgs) =    &
      &  il5(mgs)*(-qiacw(mgs)-qwfrz(mgs)-qwctfz(mgs))   &
-     &  -il5(mgs)*(qiihr(mgs))   &
+     &  -il5(mgs)*(qiihr(mgs) + qiintd(mgs) )   &
      &  -qracw(mgs) -qsacw(mgs) -qrcnw(mgs) -qhacw(mgs) - qhlacw(mgs)  !&
 !     &  -il5(mgs)*(qwfrzp(mgs))
       ELSEIF ( warmonly < 0.8 ) THEN
@@ -23264,6 +23303,8 @@ END SUBROUTINE nssl_2mom_driver
         qwfrzc(mgs)  = frac*qwfrzc(mgs)
         qwfrz(mgs)  = frac*qwfrz(mgs)
         qwctfzc(mgs) = frac*qwctfzc(mgs)
+        qiintd(mgs)  = frac*qiintd(mgs)
+
         qwctfz(mgs) = frac*qwctfz(mgs)
         qracw(mgs)   = frac*qracw(mgs)
         qsacw(mgs)   = frac*qsacw(mgs)
@@ -24311,8 +24352,8 @@ END SUBROUTINE nssl_2mom_driver
       if ( ipelec .ge. 1 .and. itest .eq. 1 ) then
       do mgs = 1,ngscnt
       psccimi(mgs) =    &
-     &   il5(mgs)*(fsccw(mgs)*qiacw(mgs)+fsccw(mgs)*qwfrzc(mgs)   &
-     &  +fsccw(mgs)*qwctfzc(mgs)+fsccw(mgs)*qicichr(mgs))   &
+     &   il5(mgs)*fsccw(mgs)*(qiacw(mgs)+qwfrzc(mgs)   &
+     &  +qwctfzc(mgs)+qicichr(mgs)+qiintd(mgs) )   &
 !     >  +il5(mgs)*fscci(mgs)*qwacii(mgs))   &
      &  +il5(mgs)*fscrw(mgs)*(1. - ifrzs)*qrfrzs(mgs)   &
      &  +fschw(mgs)*qhmul1(mgs)   &
@@ -24335,10 +24376,10 @@ END SUBROUTINE nssl_2mom_driver
       psccwmi(mgs) = 0.0
       psccwmd(mgs) =    &
      &  -fsccw(mgs)*qracw(mgs)-fsccw(mgs)*qrcnw(mgs)   &
-     &  +il5(mgs)*(-fsccw(mgs)*qiacw(mgs)   &
-     &  -fsccw(mgs)*qwctfz(mgs)    & ! -fsccw(mgs)*qwctfzp(mgs)
-     &  -fsccw(mgs)*qwfrz(mgs) )   & ! -fsccw(mgs)*qwfrzp(mgs))
-     &  -fsccw(mgs)*qiihr(mgs)   &
+     &  +il5(mgs)*fsccw(mgs)*(-qiacw(mgs)   &
+     &  -qwctfz(mgs)    & ! -fsccw(mgs)*qwctfzp(mgs)
+     &  -qwfrz(mgs) )   & ! -fsccw(mgs)*qwfrzp(mgs))
+     &  -fsccw(mgs)*(qiihr(mgs) + qiintd(mgs))   &
      &  -fsccw(mgs)*qsacw(mgs) -fsccw(mgs)*qhacw(mgs)  -fsccw(mgs)*qhlacw(mgs)
       end do
       end if

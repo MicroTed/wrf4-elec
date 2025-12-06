@@ -1760,7 +1760,11 @@ endif
       IF ( config_flags%mp_physics == wdm5scheme .or. config_flags%mp_physics == wdm6scheme ) THEN
          ! NO OP
       ELSE IF ( config_flags%mp_physics == nssl_2momccn ) THEN
-         grid%ccn_conc =  config_flags%nssl_cccn/1.225
+         IF ( config_flags%nssl_ccn_is_ccna == 0 ) THEN
+           grid%ccn_conc =  config_flags%nssl_cccn/1.225
+         ELSE
+           grid%ccn_conc = 0
+         ENDIF
       ELSE
          ! NO OP
       END IF

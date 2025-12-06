@@ -4658,12 +4658,17 @@ CALL lsm_mosaic_init(IVGTYP,config_flags%ISWATER,config_flags%ISURBAN,config_fla
      CASE (NSSL_1MOM)
          CALL nssl_2mom_init(ims,ime, jms,jme, kms,kme,nssl_params,ipctmp=0,mixphase=0,ihvol=0)
      CASE (NSSL_2MOM)
-         CALL nssl_2mom_init(ims,ime, jms,jme, kms,kme,nssl_params,ipctmp=5,mixphase=0,ihvol=1)
+         CALL nssl_2mom_init(ims,ime, jms,jme, kms,kme,nssl_params,ipctmp=5,mixphase=0,ihvol=1, &
+                             nssl_cina_on=(config_flags%nssl_cina_on > 0))
      CASE (NSSL_2MOMG)
-         CALL nssl_2mom_init(ims,ime, jms,jme, kms,kme,nssl_params,ipctmp=5,mixphase=0,ihvol=-1) ! turn off hail
+         CALL nssl_2mom_init(ims,ime, jms,jme, kms,kme,nssl_params,ipctmp=5,mixphase=0,ihvol=-1, &
+                             nssl_cina_on=(config_flags%nssl_cina_on > 0)) ! turn off hail
      CASE (NSSL_2MOMCCN)
          ccn_conc = nssl_cccn/1.225 ! set this to have correct boundary conditions
-         CALL nssl_2mom_init(ims,ime, jms,jme, kms,kme,nssl_params,ipctmp=5,mixphase=0,ihvol=1)
+         CALL nssl_2mom_init(ims,ime, jms,jme, kms,kme,nssl_params,ipctmp=5,mixphase=0,ihvol=1, &
+                             nssl_cina_on=(config_flags%nssl_cina_on > 0), &
+                             ccn_is_ccna=config_flags%nssl_ccn_is_ccna,    &
+                             nssl_ccn_on=.true. )
 #if (EM_CORE==1)
      CASE (CAMMGMPSCHEME) ! CAM5's microphysics
           CALL CAMMGMP_INIT(ixcldliq, ixcldice, ixnumliq, ixnumice &
