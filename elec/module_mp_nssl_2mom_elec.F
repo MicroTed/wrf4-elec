@@ -23304,6 +23304,7 @@ END SUBROUTINE nssl_2mom_driver
         qwfrz(mgs)  = frac*qwfrz(mgs)
         qwctfzc(mgs) = frac*qwctfzc(mgs)
         qiintd(mgs)  = frac*qiintd(mgs)
+        qicicnt(mgs) = frac*qicicnt(mgs)
 
         qwctfz(mgs) = frac*qwctfz(mgs)
         qracw(mgs)   = frac*qracw(mgs)
