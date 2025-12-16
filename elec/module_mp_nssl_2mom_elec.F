@@ -23303,8 +23303,11 @@ END SUBROUTINE nssl_2mom_driver
         qwfrzc(mgs)  = frac*qwfrzc(mgs)
         qwfrz(mgs)  = frac*qwfrz(mgs)
         qwctfzc(mgs) = frac*qwctfzc(mgs)
+        IF ( inactopt == 2 ) THEN
         qiintd(mgs)  = frac*qiintd(mgs)
         qicicnt(mgs) = frac*qicicnt(mgs)
+        qipipnt(mgs) = frac*qipipnt(mgs)
+        ENDIF
 
         qwctfz(mgs) = frac*qwctfz(mgs)
         qracw(mgs)   = frac*qracw(mgs)
