@@ -832,7 +832,7 @@
      
       ELSE   ! ipelectmp.gt.0 - computes charging but not E and discharge- 
      
-     elec(:,:,:,:)=0.
+!     elec(:,:,:,:)=0.
      elecz(:,:,:)=0.
      light(:,:)=0.
      lightdens(:,:)=0.
