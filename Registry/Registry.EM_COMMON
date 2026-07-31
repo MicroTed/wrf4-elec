@@ -2449,6 +2449,12 @@ rconfig   integer     compute_radar_ref   derived               1              0
 rconfig   integer     ra_lw_physics       namelist,physics	max_domains    -1      rh       "ra_lw_physics"         ""      ""
 rconfig   integer     ra_sw_physics       namelist,physics	max_domains    -1      rh       "ra_sw_physics"         ""      ""
 rconfig   integer     ra_sw_eclipse       namelist,physics	1              0       rh       "ra_sw_eclipse"         "0/1 flag: 1=turn eclipse on"      ""
+# Fixed insolation for radiative-convective equilibrium (RCE). Defaults follow
+# RCEMIP (Wing et al. 2018): solcon 551.58 W m-2 at zenith 42.05 deg, giving an
+# insolation of 409.6 W m-2 (tropical annual mean) with no diurnal cycle.
+rconfig   integer     fixed_sun           namelist,physics	1              0       rh       "fixed_sun"             "0/1 flag: 1=fixed sun, no diurnal cycle (RCE)"      ""
+rconfig   real        fixed_solcon        namelist,physics	1              551.58  rh       "fixed_solcon"          "solar constant used when fixed_sun=1"      "W m-2"
+rconfig   real        fixed_zenith_deg    namelist,physics	1              42.05   rh       "fixed_zenith_deg"      "solar zenith angle used when fixed_sun=1"      "degrees"
 rconfig   integer     ghg_input           namelist,physics	1              1       rh       "ghg_input"             "for CAM, RRTM, RRTMG, RRTMG_fast: 0/1 flag: 0=constant (CO2 is a function of year for RRTM*); 1=time-varying GHG from CAMtr climate file"
 rconfig   real    radt                    namelist,physics	max_domains    0       h    "RADT"          ""      ""
 rconfig   real    naer                    namelist,physics      max_domains    1e9     rh   "NAER"          ""      ""
