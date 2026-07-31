@@ -997,6 +997,9 @@ CONTAINS
 ! jararias, 2013/08/10
    real :: ioh,kt,airmass,kd
    real, dimension(ims:ime,jms:jme) :: coszen_loc,hrang_loc
+! fixed insolation for radiative-convective equilibrium (RCE)
+   integer :: fixed_sun
+   real    :: fixed_solcon,fixed_zenith_deg,fixed_coszen
 ! jararias 2013/11 but modified on 2016/2/10
 !  the following three arrays may be dimensioned by (ims,ime,kms,kme,jms,jme,aerosol_vars)
    real, dimension(:,:,:,:), pointer :: tauaer_sw=>null(), ssaaer_sw=>null(), asyaer_sw=>null()
@@ -1155,6 +1158,16 @@ CONTAINS
       ENDDO
    END IF
 
+! Fixed insolation for RCE: replace the diurnally varying sun with a constant
+! solar constant and zenith angle. radconst/calc_coszen are still called first
+! so that DECLIN and HRANG keep sensible values for anything that reads them.
+   CALL nl_get_fixed_sun( id , fixed_sun )
+   IF ( fixed_sun == 1 ) THEN
+      CALL nl_get_fixed_solcon( id , fixed_solcon )
+      CALL nl_get_fixed_zenith_deg( id , fixed_zenith_deg )
+      fixed_coszen = COS( fixed_zenith_deg * DEGRAD )
+   END IF
+
    if(swint_opt.eq.1 .or. swint_opt == 2) then
       DO ij = 1 , num_tiles
          its = i_start(ij)
@@ -1166,6 +1179,14 @@ CONTAINS
          call calc_coszen(ims,ime,jms,jme,its,ite,jts,jte, &
                           julian,xtime,gmt,declin,degrad,  &
                           xlong,xlat,coszen_loc,hrang_loc)
+         IF ( fixed_sun == 1 ) THEN
+            SOLCON = fixed_solcon
+            DO j=jts,jte
+            DO i=its,ite
+               coszen_loc(i,j) = fixed_coszen
+            ENDDO
+            ENDDO
+         END IF
       end do
    end if
 
@@ -1188,6 +1209,9 @@ CONTAINS
          CALL radconst(XTIME,DECLIN,SOLCON,JULIAN,               &
                        DEGRAD,DPD                                )
 
+! RCE fixed sun: override before solconx is handed to the surface driver
+         IF ( fixed_sun == 1 ) SOLCON = fixed_solcon
+
 ! amontornes-bcodina 2015/09 solar eclipses
 !    Solar eclipse prediction based on the Bessel's method
 !    outputs: obscur, mask, elat_track, elon_track
@@ -1206,6 +1230,15 @@ CONTAINS
          call calc_coszen(ims,ime,jms,jme,its,ite,jts,jte,  &
                           julian,xtime+radt*0.5,gmt, &
                           declin,degrad,xlong,xlat,coszen,hrang)
+
+! RCE fixed sun: this coszen is what RRTMG actually uses
+         IF ( fixed_sun == 1 ) THEN
+            DO j=jts,jte
+            DO i=its,ite
+               coszen(i,j) = fixed_coszen
+            ENDDO
+            ENDDO
+         END IF
 
        ! backup the incoming hydrometeors
 
